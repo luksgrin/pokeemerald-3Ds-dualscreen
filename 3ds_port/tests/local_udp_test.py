@@ -1,9 +1,10 @@
 """Host test of the bridge leg of local wireless play: builds
-src/3ds_local.c with LOCAL_LINK_UDP against the libctru doubles in
-tests/local_host, runs it against tools/frlg_bridge/bridge.py on loopback,
-and expects the join, the adapter's PEER_* exchange and a burst of messages
-to come back clean. The on-device wireless needs none of this; it checks
-the leg toward the Switch (docs/frlg-switch-compatibility).
+src/3ds_local.c as the wire-only build (LOCAL_LINK_UDP with
+LOCAL_LINK_NO_UDS) against the libctru doubles in tests/local_host, runs it
+against tools/frlg_bridge/bridge.py on loopback, and expects the join, the
+adapter's PEER_* exchange and a burst of messages to come back clean. The
+on-device wireless needs none of this; it checks the leg toward the Switch
+(docs/frlg-switch-compatibility).
 """
 import argparse
 import subprocess
@@ -25,8 +26,20 @@ def main():
 
     binary = PORT / "build" / "local_udp_test"
     binary.parent.mkdir(parents=True, exist_ok=True)
+
+    # The air's builds (uds, both) cannot run here, but they must compile:
+    # the declarations-only UDS in tests/local_host/3ds.h is enough for that.
+    for name, flags in [("uds", []), ("both", ["-DLOCAL_LINK_UDP"])]:
+        check = [args.cc, "-std=gnu99", "-O2", "-Wall", "-Wextra", "-Werror",
+                 *flags, "-fsyntax-only", "-Iinclude", "-Itests/local_host",
+                 "src/3ds_local.c"]
+        print("$ %s" % " ".join(check), flush=True)
+        built = subprocess.run(check, cwd=PORT)
+        if built.returncode:
+            return built.returncode
+
     cc = [args.cc, "-std=gnu99", "-O2", "-Wall", "-Wextra", "-Werror",
-          "-DLOCAL_LINK_UDP", "-Iinclude", "-Itests/local_host",
+          "-DLOCAL_LINK_UDP", "-DLOCAL_LINK_NO_UDS", "-Iinclude", "-Itests/local_host",
           "src/3ds_local.c", "tests/local_udp_test.c", "-pthread",
           "-o", str(binary)]
     print("$ %s" % " ".join(cc), flush=True)

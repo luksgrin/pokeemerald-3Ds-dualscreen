@@ -53,15 +53,21 @@ SOURCES += src/3ds_corner_art.c
 SOURCES += src/3ds_dex_top.c
 # Local wireless play (include/3ds_local.h).
 SOURCES += src/3ds_local.c
-# The transport of the local wireless emulation (src/3ds_local.c): uds, the
-# system's local wireless, for consoles nearby; udp, a session over a socket
-# instead, whose host is a bridge on the network (tools/frlg_bridge) — the
-# leg toward the Switch's GBA games. make LOCAL_LINK_BACKEND=udp
-LOCAL_LINK_BACKEND ?= uds
-ifeq ($(LOCAL_LINK_BACKEND),udp)
+# The transport of the local wireless emulation (src/3ds_local.c):
+#   uds   the system's local wireless, for consoles nearby;
+#   udp   a session over a socket instead, whose host is a bridge on the
+#         network (tools/frlg_bridge) — the leg toward the Switch's GBA
+#         games. A test build: no air, so no play with unmodified consoles;
+#   both  the two together: a session is hosted on the air, a search hears
+#         the air and then the wire, and a lone host moves to a bridge it
+#         hears.
+LOCAL_LINK_BACKEND ?= both
+ifeq ($(LOCAL_LINK_BACKEND),both)
 GAMEFLAGS += -DLOCAL_LINK_UDP
+else ifeq ($(LOCAL_LINK_BACKEND),udp)
+GAMEFLAGS += -DLOCAL_LINK_UDP -DLOCAL_LINK_NO_UDS
 else ifneq ($(LOCAL_LINK_BACKEND),uds)
-$(error LOCAL_LINK_BACKEND must be uds or udp)
+$(error LOCAL_LINK_BACKEND must be uds, udp or both)
 endif
 SOURCES += src/3ds_daynight.c
 SOURCES += src/3ds_clock_store.c

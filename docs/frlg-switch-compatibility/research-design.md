@@ -197,7 +197,28 @@ build-id gate is waived for bridge-flagged beacons (half of item 2; kind matchin
 stays strict). The B1 rig (below, §5) runs against it: `tools/frlg_bridge/bridge.py`
 hosts the session and speaks the adapter's protocol, and `make verify-local-udp`
 exercises the join, the PEER_* exchange and a multi-frame burst on loopback —
-no radio hardware needed.
+no radio hardware needed. Item 2 is now in as well: `LOCAL_LINK_BACKEND=both`
+(the Makefile default) compiles both radios into one build — hosting stays on
+the air, `JoinNearby` scans the air and then listens on the socket, and a lone
+air host moves to a fresh bridge beacon (`MergeAlone` → `MergeToWire`); the
+wire-only build stays available as the test build (`udp`), and the host test
+syntax-checks all three modes. On-device validation (B1) is pending.
+
+**Decisions (2026-11-04):**
+- **Hardware:** the household router (TP-Link Archer C9, Broadcom Wi-Fi) is a dead end
+  for LDN hosting — no OpenWrt AP mode on 2.4 GHz; DD-WRT's driver stack exposes no
+  beacon contents either. The spare phone and the PC (native Python; WSL2 for the
+  pokeldn-derived Pia code) run the bridge's brain in development. One ESP32-class
+  board (~¥1,800, ESP32-DevKitC-32E at Akizuki) is the only purchase: it hosts the
+  LDN leg toward the Switch and the 3DS's UDP leg on its own network — the end state
+  is self-contained (Switch + 3DS + board, no router, no phone).
+- **One build that hears both radios** (implemented 2026-11-04, on-device
+  validation B1 pending): hosting stays on the air (UDS — the 3DS only hosts for
+  stock 3DSes); *searching* hears both, the air first then the socket; and a lone
+  host that hears a bridge's beacon moves to the bridge's session (MergeAlone
+  extended). Needs no options entry; `LOCAL_LINK_BACKEND=both` is the Makefile
+  default, `uds` and `udp` (wire only, no play with stock consoles) remain as
+  build-time fallbacks.
 
 ## 5. Workstream W2: the bridge
 

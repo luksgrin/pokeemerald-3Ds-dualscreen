@@ -37,11 +37,15 @@
  * read; on an Old 3DS that service shares the system core with the GPU's,
  * and a link battle dropped to 30 fps.
  *
- * Another build of this file, LOCAL_LINK_UDP, keeps the message streams and
- * the game's side but puts them over a UDP socket instead of UDS: the
- * session's host is not this system's wireless but a bridge on the network
- * (tools/frlg_bridge, and later a small board by the Switch), and its
- * beacons, not radio scans, are what a search finds.
+ * The wire. LOCAL_LINK_UDP compiles in a second radio: the same message
+ * streams over a UDP socket, whose session a bridge on the network hosts
+ * (tools/frlg_bridge, and later a small board by the Switch) — the leg
+ * toward the Switch's GBA games; its beacons, not radio scans, are what a
+ * search finds there. LOCAL_LINK_NO_UDS takes the air back out again (a
+ * test build, no play with unmodified consoles). With neither taken out —
+ * the usual build — both radios are in: a session is hosted on the air, a
+ * search hears the air and then the wire, and a lone host moves to a
+ * bridge it hears.
  */
 #include <3ds.h>
 #include <stdbool.h>
@@ -195,6 +199,15 @@ enum
     SESSION_OTHER, /* this counter's, another build (or protocol) */
 };
 
+/* Which leg a session rides: the air (the system's local wireless, for
+ * consoles nearby), or the wire (a UDP socket, whose session a bridge on
+ * the network hosts — the way to the Switch's GBA games). */
+enum
+{
+    BACKEND_AIR,
+    BACKEND_WIRE,
+};
+
 struct OutMessage
 {
     uint16_t seq;
@@ -228,7 +241,9 @@ static struct
     Thread thread;
     bool ready;  /* LocalLink_Init done */
     volatile bool quit;
+#ifndef LOCAL_LINK_NO_UDS
     bool udsReady;
+#endif
 
     /* Asked for by the game, done by the thread. */
     bool startAsked, leaveAsked;
@@ -237,16 +252,17 @@ static struct
 
     uint8_t state; /* LOCAL_SESSION_* */
     uint8_t kind;
-    bool inNetwork; /* the thread's: hosting or joined a UDS network */
+    bool inNetwork; /* the thread's: hosting or joined a network */
     bool hosting;
     uint32_t token;       /* ours, in our session's beacon */
     uint32_t nextMergeMs; /* a lone host looks for other sessions then */
     uint32_t mergeUntilMs; /* and not after this */
     uint16_t myId;
     uint32_t generation;
+    uint8_t backend; /* BACKEND_*: which leg the session rides */
 #ifdef LOCAL_LINK_UDP
-    /* The socket's bookkeeping: where the session's host is (a client),
-     * where each player is (a host), and the last beacon seen. */
+    /* The wire's bookkeeping: where the session's host is (a client), where
+     * each player is (a host), and the last beacon seen. */
     int sock;
     bool socReady;   /* the system's sockets are up: once; it survives sleep */
     bool radioReady; /* our socket is bound */
@@ -257,7 +273,8 @@ static struct
     struct UdpBeacon beacon;
     struct sockaddr_in beaconAddr;
     uint32_t beaconMs;
-#else
+#endif
+#ifndef LOCAL_LINK_NO_UDS
     udsBindContext bind;
 #endif
 
@@ -276,10 +293,10 @@ static struct
     struct { uint32_t wakes, pulls, framesIn, framesOut, resent, sinceMs; } stats;
 } sL;
 
-#ifdef LOCAL_LINK_UDP
-static uint8_t sFrame[FRAME_MAX + 12]; /* a frame: the header, the messages, and padding */
+#ifndef LOCAL_LINK_NO_UDS
+static uint8_t sFrame[UDS_DATAFRAME_MAXSIZE]; /* a UDS frame takes 0x5C6 bytes */
 #else
-static uint8_t sFrame[UDS_DATAFRAME_MAXSIZE];
+static uint8_t sFrame[FRAME_MAX + 12]; /* the header, the messages, and padding */
 #endif
 
 uint32_t LocalLink_Milliseconds(void)
@@ -564,6 +581,25 @@ static void UdpUpdate(uint32_t now)
     UdpBeaconSend();
 }
 
+#ifndef LOCAL_LINK_NO_UDS
+/* A host on the air hears the wire too: what its socket has gathered (a
+ * bridge's beacons, mostly), for MergeAlone's look. Nothing waits: what is
+ * not a beacon is dropped, nothing here is for a session of ours. */
+static void UdpHearBeacons(void)
+{
+    for (int i = 0; i < 16; i++)
+    {
+        struct sockaddr_in src;
+        struct UdpBeacon beacon;
+        int got = UdpPull(&src, sUdpBuf, sizeof(sUdpBuf), 0);
+
+        if (got <= 0)
+            break;
+        if (UdpBeaconAt(sUdpBuf, (uint32_t)got, &beacon))
+            UdpBeaconSeen(&src, &beacon);
+    }
+}
+#endif
 #endif /* LOCAL_LINK_UDP */
 
 /* ---- The thread's side of UDS ------------------------------------------- */
@@ -584,6 +620,7 @@ static void SendFrame(uint16_t to, uint32_t bodyLen)
      * and meanwhile the game can only add messages behind the ones in it. */
     LightLock_Unlock(&sL.lock);
 #ifdef LOCAL_LINK_UDP
+    if (sL.backend == BACKEND_WIRE)
     {
         int sent = UdpSendTo(to, sFrame, size);
 
@@ -596,16 +633,22 @@ static void SendFrame(uint16_t to, uint32_t bodyLen)
             if (told++ < 8)
                 CtrLog_Write(CTR_LOG_ERROR, "local: send to %u failed (errno %d)", to, errno);
         }
+        return;
+    }
+#endif
+#ifndef LOCAL_LINK_NO_UDS
+    {
+        Result ret = udsSendTo(to, DATA_CHANNEL, UDS_SENDFLAG_Default, sFrame, size);
+
+        LightLock_Lock(&sL.lock);
+        sL.stats.framesOut++;
+        /* UDS_CHECK_SENDTO_FATALERROR, which -Wsign-compare rejects: that one
+         * error only means the frame wasn't sent. */
+        if (R_FAILED(ret) && (u32)ret != 0xC86113F0u)
+            CtrLog_Write(CTR_LOG_ERROR, "local: send to %u failed (%08lx)", to, (unsigned long)ret);
     }
 #else
-    Result ret = udsSendTo(to, DATA_CHANNEL, UDS_SENDFLAG_Default, sFrame, size);
-
-    LightLock_Lock(&sL.lock);
-    sL.stats.framesOut++;
-    /* UDS_CHECK_SENDTO_FATALERROR, which -Wsign-compare rejects: that one
-     * error only means the frame wasn't sent. */
-    if (R_FAILED(ret) && (u32)ret != 0xC86113F0u)
-        CtrLog_Write(CTR_LOG_ERROR, "local: send to %u failed (%08lx)", to, ret);
+    LightLock_Lock(&sL.lock); /* the wire-only build never gets here */
 #endif
 }
 
@@ -659,9 +702,41 @@ static void FlushNode(uint16_t id, uint32_t now)
     }
 }
 
-#ifdef LOCAL_LINK_UDP
 static void ReadFrames(void)
 {
+#ifndef LOCAL_LINK_NO_UDS
+    if (sL.backend == BACKEND_AIR)
+    {
+        /* Cleared before reading: a frame that comes in meanwhile signals it
+         * again, so the thread wakes for it. */
+        if (sL.bind.event)
+            svcClearEvent(sL.bind.event);
+        for (int i = 0; i < 64; i++)
+        {
+            size_t got = 0;
+            u16 from = 0;
+            Result ret = udsPullPacket(&sL.bind, sFrame, sizeof(sFrame), &got, &from);
+
+            sL.stats.pulls++;
+
+            if (R_FAILED(ret))
+            {
+                static unsigned told;
+                if (told++ < 8)
+                    CtrLog_Write(CTR_LOG_ERROR, "local: receive failed (%08lx)", (unsigned long)ret);
+                break;
+            }
+            if (got == 0)
+                break;
+            sL.stats.framesIn++;
+            LightLock_Lock(&sL.lock);
+            HandleFrame(from, sFrame, got);
+            LightLock_Unlock(&sL.lock);
+        }
+        return;
+    }
+#endif
+#ifdef LOCAL_LINK_UDP
     for (int i = 0; i < 64; i++)
     {
         struct sockaddr_in src;
@@ -700,38 +775,8 @@ static void ReadFrames(void)
             sL.nodeMask |= 1u << (id - 1);
         LightLock_Unlock(&sL.lock);
     }
+#endif
 }
-#else
-static void ReadFrames(void)
-{
-    /* Cleared before reading: a frame that comes in meanwhile signals it
-     * again, so the thread wakes for it. */
-    if (sL.bind.event)
-        svcClearEvent(sL.bind.event);
-    for (int i = 0; i < 64; i++)
-    {
-        size_t got = 0;
-        u16 from = 0;
-        Result ret = udsPullPacket(&sL.bind, sFrame, sizeof(sFrame), &got, &from);
-
-        sL.stats.pulls++;
-
-        if (R_FAILED(ret))
-        {
-            static unsigned told;
-            if (told++ < 8)
-                CtrLog_Write(CTR_LOG_ERROR, "local: receive failed (%08lx)", ret);
-            break;
-        }
-        if (got == 0)
-            break;
-        sL.stats.framesIn++;
-        LightLock_Lock(&sL.lock);
-        HandleFrame(from, sFrame, got);
-        LightLock_Unlock(&sL.lock);
-    }
-}
-#endif /* LOCAL_LINK_UDP */
 
 static void EndSession(uint8_t state)
 {
@@ -747,37 +792,37 @@ static void EndSession(uint8_t state)
 
 static void LeaveNetwork(bool quiet)
 {
-#ifdef LOCAL_LINK_UDP
-    /* Nothing to tell the network: it is the bookkeeping that is left. */
     if (!sL.inNetwork)
         return;
     sL.inNetwork = false;
-    sL.haveHost = false;
-    memset(sL.peerAddr, 0, sizeof(sL.peerAddr));
-    memset(&sL.beacon, 0, sizeof(sL.beacon));
-    memset(&sL.beaconAddr, 0, sizeof(sL.beaconAddr));
-    sL.beaconMs = 0;
-    sL.nextBeaconMs = 0;
+    if (sL.backend == BACKEND_WIRE)
+    {
+#ifdef LOCAL_LINK_UDP
+        /* Nothing to tell the network: it is the bookkeeping that is left. */
+        sL.haveHost = false;
+        memset(sL.peerAddr, 0, sizeof(sL.peerAddr));
+        memset(&sL.beacon, 0, sizeof(sL.beacon));
+        memset(&sL.beaconAddr, 0, sizeof(sL.beaconAddr));
+        sL.beaconMs = 0;
+        sL.nextBeaconMs = 0;
+#endif
+    }
+#ifndef LOCAL_LINK_NO_UDS
+    else
+    {
+        Result left = sL.hosting ? udsDestroyNetwork() : udsDisconnectNetwork();
+        Result unbound = udsUnbind(&sL.bind);
+
+        if (R_FAILED(left) || R_FAILED(unbound))
+            CtrLog_Write(CTR_LOG_ERROR, "local: leaving: %08lx, unbinding: %08lx", (unsigned long)left, (unsigned long)unbound);
+    }
+#endif
     sL.hosting = false;
     if (!quiet)
         CtrLog_Write(CTR_LOG_GAME, "local: left the session");
-#else
-    Result left, unbound;
-
-    if (!sL.inNetwork)
-        return;
-    sL.inNetwork = false;
-    left = sL.hosting ? udsDestroyNetwork() : udsDisconnectNetwork();
-    unbound = udsUnbind(&sL.bind);
-    sL.hosting = false;
-    if (R_FAILED(left) || R_FAILED(unbound))
-        CtrLog_Write(CTR_LOG_ERROR, "local: leaving: %08lx, unbinding: %08lx", left, unbound);
-    else if (!quiet)
-        CtrLog_Write(CTR_LOG_GAME, "local: left the session");
-#endif
 }
 
-#ifndef LOCAL_LINK_UDP
+#ifndef LOCAL_LINK_NO_UDS
 /* Who's in the network now: players joining and leaving. */
 static void UpdateNodes(void)
 {
@@ -791,7 +836,7 @@ static void UpdateNodes(void)
     /* Not in a network any more: the host went, or we were sent away. */
     if (st.status != 6 && st.status != 9 && st.status != 10)
     {
-        CtrLog_Write(CTR_LOG_GAME, "local: the session ended (status %lu)", st.status);
+        CtrLog_Write(CTR_LOG_GAME, "local: the session ended (status %lu)", (unsigned long)st.status);
         LeaveNetwork(false);
         EndSession(LOCAL_SESSION_NONE);
         return;
@@ -817,14 +862,14 @@ static void UpdateNodes(void)
     sL.nodeMask = mask;
     LightLock_Unlock(&sL.lock);
 }
-#endif /* !LOCAL_LINK_UDP */
+#endif /* not LOCAL_LINK_NO_UDS */
 
 #ifdef LOCAL_LINK_UDP
-
-/* The system's sockets, then ours: a socket on the port, open to broadcast
- * and hearing it. socInit done, it stays; the socket does not survive a
- * sleep (the wireless does not either), and is bound again for a session. */
-static bool StartRadio(void)
+/* The wire: the system's sockets, then ours — a socket on the port, open to
+ * broadcast and hearing it. socInit done, it stays; the socket does not
+ * survive a sleep (the wireless does not either), and is bound again for a
+ * session. */
+static bool StartRadioWire(void)
 {
     struct sockaddr_in addr;
     int on = 1;
@@ -873,36 +918,42 @@ static bool StartRadio(void)
     return false;
 }
 
-/* After sleep: the system switched the wireless off, and the socket with
- * it. Closed here, it is bound again for the next session. */
+#endif /* LOCAL_LINK_UDP */
+
+/* After sleep: the system switched the wireless off, and the radios' state
+ * is gone with it — the socket closed, the service's handle open but past
+ * its own state. Left as they were, every scan and host from then on failed
+ * and the counters said the wireless was off. Closed here, both are started
+ * afresh by the next session. */
 static void AfterWake(void)
 {
     bool was = sL.inNetwork;
 
     if (sL.inNetwork)
         LeaveNetwork(true);
+#ifdef LOCAL_LINK_UDP
     if (sL.radioReady)
     {
         close(sL.sock);
         sL.sock = -1;
         sL.radioReady = false;
     }
+#endif
+#ifndef LOCAL_LINK_NO_UDS
+    if (sL.udsReady)
+        udsExit();
+    sL.udsReady = false;
+#endif
+    sL.inNetwork = false;
     sL.hosting = false;
     if (was || sL.state == LOCAL_SESSION_IN || sL.state == LOCAL_SESSION_SEARCHING)
         EndSession(LOCAL_SESSION_NONE);
-    CtrLog_Write(CTR_LOG_GAME, "local: woke from sleep: the socket closed%s", was ? ", session ended" : "");
+    CtrLog_Write(CTR_LOG_GAME, "local: woke from sleep: the wireless closed%s", was ? ", session ended" : "");
 }
 
-/* Before looking or hosting: the socket bound, or bound again. Nothing of a
- * session is left in it between sessions. */
-static bool EnsureIdle(void)
-{
-    return StartRadio();
-}
-
-#else /* UDS */
-
-static bool StartRadio(void)
+#ifndef LOCAL_LINK_NO_UDS
+/* The air: the system's local wireless. */
+static bool StartRadioAir(void)
 {
     Result ret = 0;
 
@@ -923,30 +974,8 @@ static bool StartRadio(void)
             return true;
         }
     }
-    CtrLog_Write(CTR_LOG_ERROR, "local: udsInit failed (%08lx)", ret);
+    CtrLog_Write(CTR_LOG_ERROR, "local: udsInit failed (%08lx)", (unsigned long)ret);
     return false;
-}
-
-/*
- * After sleep: the system switched the radio off and the service's state is
- * gone with it, though its handle is still open. Kept, it failed every scan
- * and host from then on and the counters said the wireless was off. Closed
- * here, it is started afresh by the next session.
- */
-static void AfterWake(void)
-{
-    bool was = sL.inNetwork;
-
-    if (sL.inNetwork)
-        LeaveNetwork(true);
-    if (sL.udsReady)
-        udsExit();
-    sL.udsReady = false;
-    sL.inNetwork = false;
-    sL.hosting = false;
-    if (was || sL.state == LOCAL_SESSION_IN || sL.state == LOCAL_SESSION_SEARCHING)
-        EndSession(LOCAL_SESSION_NONE);
-    CtrLog_Write(CTR_LOG_GAME, "local: woke from sleep: wireless service closed%s", was ? ", session ended" : "");
 }
 
 /* The wireless service started again: what it was in is gone. On hardware it
@@ -963,22 +992,20 @@ static bool RestartRadio(void)
         udsExit();
     sL.udsReady = false;
     svcSleepThread(100000000LL);
-    return StartRadio();
+    return StartRadioAir();
 }
 
-/* Before scanning or hosting: the service in no network (nothing left over
- * from the last session), or started again. */
-static bool EnsureIdle(void)
+/* The air's service in no network (nothing left over from the last
+ * session), or started again. */
+static bool AirIdle(void)
 {
     udsConnectionStatus st;
     Result ret;
 
-    if (!StartRadio())
-        return false;
     ret = udsGetConnectionStatus(&st);
     if (R_SUCCEEDED(ret) && st.status == STATUS_IDLE)
         return true;
-    CtrLog_Write(CTR_LOG_GAME, "local: wireless not idle (%08lx, status %lu): closing", ret, R_SUCCEEDED(ret) ? st.status : 0);
+    CtrLog_Write(CTR_LOG_GAME, "local: wireless not idle (%08lx, status %lu): closing", (unsigned long)ret, R_SUCCEEDED(ret) ? (unsigned long)st.status : 0ul);
     if (R_SUCCEEDED(ret) && st.status == STATUS_HOST)
         ret = udsDestroyNetwork();
     else if (R_SUCCEEDED(ret))
@@ -991,8 +1018,25 @@ static bool EnsureIdle(void)
         return true;
     return RestartRadio();
 }
+#endif /* not LOCAL_LINK_NO_UDS */
 
-#endif /* LOCAL_LINK_UDP */
+/* Before looking or hosting: the radios up, the air's service idle. In the
+ * build with both, either radio will do: the session fails only if neither
+ * came up. */
+static bool EnsureIdle(void)
+{
+#ifdef LOCAL_LINK_NO_UDS
+    return StartRadioWire();
+#elif !defined(LOCAL_LINK_UDP)
+    return StartRadioAir() && AirIdle();
+#else
+    bool wire = StartRadioWire();
+
+    if (!StartRadioAir())
+        return wire; /* the air is out; the wire may not be */
+    return AirIdle() || wire;
+#endif
+}
 
 static const char *BuildHex(char *out, const uint8_t *id)
 {
@@ -1038,11 +1082,13 @@ static bool UdpConnect(const struct sockaddr_in *src, const struct UdpBeacon *b)
     sL.hostAddr = *src;
     sL.haveHost = true;
     sL.hosting = false;
+    sL.backend = BACKEND_WIRE;
     CtrLog_Write(CTR_LOG_GAME, "local: joining the session at %s%s", inet_ntoa(src->sin_addr),
                  (b->flags & UDP_FLAG_BRIDGE) ? ", the bridge" : "");
     return true;
 }
-#else
+#endif /* LOCAL_LINK_UDP */
+#ifndef LOCAL_LINK_NO_UDS
 static int SessionCheck(const udsNetworkScanInfo *net, uint8_t kind, uint32_t *token)
 {
     struct AppData app = {0};   /* a short beacon leaves the rest unread */
@@ -1081,13 +1127,14 @@ static bool Connect(const udsNetworkScanInfo *net)
 
     if (R_FAILED(ret))
     {
-        CtrLog_Write(CTR_LOG_ERROR, "local: joining failed (%08lx)", ret);
+        CtrLog_Write(CTR_LOG_ERROR, "local: joining failed (%08lx)", (unsigned long)ret);
         return false;
     }
     sL.hosting = false;
+    sL.backend = BACKEND_AIR;
     return true;
 }
-#endif /* LOCAL_LINK_UDP */
+#endif /* not LOCAL_LINK_NO_UDS */
 
 /* The search is no longer wanted: the game asked to leave or to start again,
  * the system slept, or the program is closing. Left to run, it went on to
@@ -1103,50 +1150,30 @@ static bool SearchCancelled(void)
 }
 
 /* otherBuild: a session of this counter of another build was seen. */
-#ifdef LOCAL_LINK_UDP
 static bool JoinNearby(uint8_t kind, uint32_t lookMs, bool *otherBuild)
 {
     uint32_t until = LocalLink_Milliseconds() + lookMs;
+#ifndef LOCAL_LINK_NO_UDS
+    int failures = 0;
+    static uint32_t scanBuffer[0x4000 / 4];
+#endif
 
+#ifdef LOCAL_LINK_UDP
     /* What gathered in the socket while nothing was going on: gone. */
     while (UdpPull(NULL, sUdpBuf, sizeof(sUdpBuf), 0) > 0)
         ;
+#endif
     do
     {
-        struct sockaddr_in src;
-        struct UdpBeacon beacon;
-        uint32_t token = 0;
-        int check, got = UdpPull(&src, sUdpBuf, sizeof(sUdpBuf), 100);
-
-        if (got < 0)
-            return false;
-        if (got == 0 || !UdpBeaconAt(sUdpBuf, (uint32_t)got, &beacon))
-            continue;
-        check = UdpSessionCheck(&beacon, kind, &token);
-        if (check == SESSION_OTHER)
-            *otherBuild = true;
-        else if (check == SESSION_YES && UdpConnect(&src, &beacon))
-            return true;
-    } while (!SearchCancelled() && LocalLink_Milliseconds() < until);
-    return false;
-}
-#else
-static bool JoinNearby(uint8_t kind, uint32_t lookMs, bool *otherBuild)
-{
-    int failures = 0;
-
-    static uint32_t scanBuffer[0x4000 / 4];
-    uint32_t until = LocalLink_Milliseconds() + lookMs;
-
-    do
-    {
+#ifndef LOCAL_LINK_NO_UDS
+        /* The air first: the consoles nearby. */
         udsNetworkScanInfo *nets = NULL;
         size_t total = 0;
         Result ret = udsScanBeacons(scanBuffer, sizeof(scanBuffer), &nets, &total, COMM_ID, 0, NULL, false);
 
         if (R_FAILED(ret))
         {
-            CtrLog_Write(CTR_LOG_ERROR, "local: scan failed (%08lx)", ret);
+            CtrLog_Write(CTR_LOG_ERROR, "local: scan failed (%08lx)", (unsigned long)ret);
             free(nets);
             /* Once more from scratch; then give up for this time. */
             if (++failures > 1 || !RestartRadio())
@@ -1166,16 +1193,41 @@ static bool JoinNearby(uint8_t kind, uint32_t lookMs, bool *otherBuild)
             }
         }
         free(nets);
+#endif
+#ifdef LOCAL_LINK_UDP
+        /* Then the wire: a bridge's beacon, when one is heard. */
+        {
+            struct sockaddr_in src;
+            struct UdpBeacon beacon;
+            uint32_t token = 0;
+            int check, got = UdpPull(&src, sUdpBuf, sizeof(sUdpBuf), 100);
+
+#ifdef LOCAL_LINK_NO_UDS
+            if (got < 0)
+                return false;
+#else
+            if (got < 0)
+                continue; /* no socket: the air is still an option */
+#endif
+            if (got == 0 || !UdpBeaconAt(sUdpBuf, (uint32_t)got, &beacon))
+                continue;
+            check = UdpSessionCheck(&beacon, kind, &token);
+            if (check == SESSION_OTHER)
+                *otherBuild = true;
+            else if (check == SESSION_YES && UdpConnect(&src, &beacon))
+                return true;
+        }
+#endif
     } while (!SearchCancelled() && LocalLink_Milliseconds() < until);
     return false;
 }
-#endif /* LOCAL_LINK_UDP */
 
-#ifdef LOCAL_LINK_UDP
+#ifdef LOCAL_LINK_NO_UDS
 static bool HostSession(uint8_t kind)
 {
     (void)kind; /* the beacon says the rest: it is made when it is sent */
     sL.hosting = true;
+    sL.backend = BACKEND_WIRE;
     sL.nextBeaconMs = 0;
     sL.nextMergeMs = LocalLink_Milliseconds() + MERGE_MS + (uint32_t)(rand() % MERGE_JITTER_MS);
     return true;
@@ -1194,25 +1246,26 @@ static bool HostSession(uint8_t kind)
                            UDS_DEFAULT_RECVBUFSIZE);
     if (R_FAILED(ret))
     {
-        CtrLog_Write(CTR_LOG_ERROR, "local: hosting failed (%08lx)", ret);
+        CtrLog_Write(CTR_LOG_ERROR, "local: hosting failed (%08lx)", (unsigned long)ret);
         if (!RestartRadio())
             return false;
         ret = udsCreateNetwork(&net, sPassphrase, strlen(sPassphrase) + 1, &sL.bind, DATA_CHANNEL,
                                UDS_DEFAULT_RECVBUFSIZE);
         if (R_FAILED(ret))
         {
-            CtrLog_Write(CTR_LOG_ERROR, "local: hosting failed again (%08lx)", ret);
+            CtrLog_Write(CTR_LOG_ERROR, "local: hosting failed again (%08lx)", (unsigned long)ret);
             return false;
         }
     }
     ret = udsSetApplicationData(&app, sizeof(app));
     if (R_FAILED(ret))
-        CtrLog_Write(CTR_LOG_ERROR, "local: beacon data not set (%08lx)", ret);
+        CtrLog_Write(CTR_LOG_ERROR, "local: beacon data not set (%08lx)", (unsigned long)ret);
     sL.hosting = true;
+    sL.backend = BACKEND_AIR;
     sL.nextMergeMs = LocalLink_Milliseconds() + MERGE_MS + (uint32_t)(rand() % MERGE_JITTER_MS);
     return true;
 }
-#endif /* LOCAL_LINK_UDP */
+#endif /* LOCAL_LINK_NO_UDS */
 
 /* A new session hosted: lone, it may look for another for a while. */
 static bool HostNewSession(uint8_t kind)
@@ -1225,96 +1278,81 @@ static bool HostNewSession(uint8_t kind)
 
 /* Who's in the network we just joined or made: our id, and the others so far
  * (the status event may already be spent). */
+static void TakeNetwork(bool quiet)
+{
+    sL.inNetwork = true;
+    if (sL.backend == BACKEND_WIRE)
+    {
 #ifdef LOCAL_LINK_UDP
-/* A session of two: the host is 1 and we are 2. Its advert comes with its
- * first messages, as ours go with ours. */
-static void TakeNetwork(bool quiet)
-{
-    sL.inNetwork = true;
-    LightLock_Lock(&sL.lock);
-    for (uint16_t id = 1; id < NODE_SLOTS; id++)
-        memset(&sL.nodes[id], 0, sizeof(sL.nodes[id]));
-    sL.myId = sL.hosting ? 1 : UDP_CLIENT_ID;
-    NodeJoined(sL.myId);
-    if (!sL.hosting)
-    {
-        NodeJoined(1);
-        sL.nodeMask = (1u << 0) | (1u << (sL.myId - 1));
-    }
-    else
-        sL.nodeMask = 1u << 0;
-    LightLock_Unlock(&sL.lock);
-    if (!quiet)
-        CtrLog_Write(CTR_LOG_GAME, "local: %s a session as player %u",
-                     sL.hosting ? "hosting" : "joined", sL.myId);
-}
-#else
-static void TakeNetwork(bool quiet)
-{
-    udsConnectionStatus st = {0};
-
-    sL.inNetwork = true;
-    /* The status event spent before the status is read: a player joining or
-     * leaving after the read signals it again, and UpdateNodes sees it. */
-    udsWaitConnectionStatusEvent(false, false);
-    if (R_FAILED(udsGetConnectionStatus(&st)) || st.cur_NetworkNodeID == 0)
-    {
-        /* No id and no node mask to trust: garbage would join random nodes. */
-        CtrLog_Write(CTR_LOG_ERROR, "local: no connection status, session dropped");
-        LeaveNetwork(true);
-        EndSession(LOCAL_SESSION_FAILED);
+        /* A session of two: the host is 1 and we are 2. Its advert comes
+         * with its first messages, as ours go with ours. */
+        LightLock_Lock(&sL.lock);
+        for (uint16_t id = 1; id < NODE_SLOTS; id++)
+            memset(&sL.nodes[id], 0, sizeof(sL.nodes[id]));
+        sL.myId = sL.hosting ? 1 : UDP_CLIENT_ID;
+        NodeJoined(sL.myId);
+        if (!sL.hosting)
+        {
+            NodeJoined(1);
+            sL.nodeMask = (1u << 0) | (1u << (sL.myId - 1));
+        }
+        else
+            sL.nodeMask = 1u << 0;
+        LightLock_Unlock(&sL.lock);
+        if (!quiet)
+            CtrLog_Write(CTR_LOG_GAME, "local: %s a session as player %u",
+                         sL.hosting ? "hosting" : "joined", sL.myId);
+#endif
         return;
     }
-    LightLock_Lock(&sL.lock);
-    for (uint16_t id = 1; id < NODE_SLOTS; id++)
-        memset(&sL.nodes[id], 0, sizeof(sL.nodes[id]));
-    sL.myId = st.cur_NetworkNodeID;
-    for (uint16_t id = 1; id < NODE_SLOTS; id++)
-        if (st.node_bitmask & (1u << (id - 1)))
-            NodeJoined(id);
-    sL.nodeMask = st.node_bitmask;
-    LightLock_Unlock(&sL.lock);
-    if (!quiet)
-        CtrLog_Write(CTR_LOG_GAME, "local: %s a session as player %u (%u in it)",
-                 sL.hosting ? "hosting" : "joined", st.cur_NetworkNodeID, st.total_nodes);
-}
-#endif /* LOCAL_LINK_UDP */
+#ifndef LOCAL_LINK_NO_UDS
+    {
+        udsConnectionStatus st = {0};
 
-/*
- * A host still alone in its session looks for another session of its
- * counter, and moves to it: one with players in it, or another lone host's
- * if that host's token is lower (the other one stays put, so the two don't
- * both move). Nobody is linked to a lone host, so the adapter carries on
- * as it was: the session's generation stays the same.
- *
- * A host can look while its network stays up (the system scans "on
- * connection"); where that fails (Azahar doesn't have it), the network is
- * closed while it looks and opened again if it stays. A player trying to
- * join meanwhile finds nothing, hosts, and the two meet the next time one
- * of them looks.
- */
+        /* The status event spent before the status is read: a player joining or
+         * leaving after the read signals it again, and UpdateNodes sees it. */
+        udsWaitConnectionStatusEvent(false, false);
+        if (R_FAILED(udsGetConnectionStatus(&st)) || st.cur_NetworkNodeID == 0)
+        {
+            /* No id and no node mask to trust: garbage would join random nodes. */
+            CtrLog_Write(CTR_LOG_ERROR, "local: no connection status, session dropped");
+            LeaveNetwork(true);
+            EndSession(LOCAL_SESSION_FAILED);
+            return;
+        }
+        LightLock_Lock(&sL.lock);
+        for (uint16_t id = 1; id < NODE_SLOTS; id++)
+            memset(&sL.nodes[id], 0, sizeof(sL.nodes[id]));
+        sL.myId = st.cur_NetworkNodeID;
+        for (uint16_t id = 1; id < NODE_SLOTS; id++)
+            if (st.node_bitmask & (1u << (id - 1)))
+                NodeJoined(id);
+        sL.nodeMask = st.node_bitmask;
+        LightLock_Unlock(&sL.lock);
+        if (!quiet)
+            CtrLog_Write(CTR_LOG_GAME, "local: %s a session as player %u (%u in it)",
+                     sL.hosting ? "hosting" : "joined", st.cur_NetworkNodeID, st.total_nodes);
+    }
+#endif
+}
+
 #ifdef LOCAL_LINK_UDP
-/* A host still alone looks around in the beacons its socket has heard: for
- * another session of its counter to move to — one with players in it, or
- * another lone host's if that host's token is lower (the other one stays
- * put, so the two don't both move). Nobody is linked to a lone host, so the
- * adapter carries on as it was: the session's generation stays the same. */
-static void MergeAlone(void)
+/* The wire half of a lone host's look (see MergeAlone): the session its
+ * socket last heard — a bridge's, or a lone wire host's — if it is fresh,
+ * of this counter, and worth moving to: players in it, or a lone one whose
+ * token is lower. Whether we moved. */
+static bool MergeToWire(void)
 {
     struct sockaddr_in addr;
     struct UdpBeacon beacon;
-    uint32_t now = LocalLink_Milliseconds(), token = 0;
+    uint32_t token = 0;
 
-    if (!sL.hosting || sL.myId == 0 || now < sL.nextMergeMs || now >= sL.mergeUntilMs
-     || (sL.nodeMask & ~(1u << (sL.myId - 1))))
-        return;
-    sL.nextMergeMs = now + MERGE_MS + (uint32_t)(rand() % MERGE_JITTER_MS);
-    if (!sL.beaconMs || now - sL.beaconMs >= UDP_BEACON_STALE_MS)
-        return;
+    if (!sL.beaconMs || LocalLink_Milliseconds() - sL.beaconMs >= UDP_BEACON_STALE_MS)
+        return false;
     if (UdpSessionCheck(&sL.beacon, sL.kind, &token) != SESSION_YES || token == sL.token)
-        return;
+        return false;
     if (sL.beacon.players <= 1 && token > sL.token)
-        return;
+        return false;
     addr = sL.beaconAddr;
     beacon = sL.beacon;
     CtrLog_Write(CTR_LOG_GAME, "local: another session of this counter nearby, moving to it");
@@ -1322,36 +1360,39 @@ static void MergeAlone(void)
     if (UdpConnect(&addr, &beacon))
     {
         TakeNetwork(false);
-        return;
+        return true;
     }
     if (!HostSession(sL.kind))
     {
         EndSession(LOCAL_SESSION_FAILED);
-        return;
+        return true;
     }
     TakeNetwork(true);
+    return true;
 }
-#else
-static void MergeAlone(void)
+#endif
+
+#ifndef LOCAL_LINK_NO_UDS
+/* The air half of a lone host's look (see MergeAlone). A host can look
+ * while its network stays up (the system scans "on connection"); where that
+ * fails (Azahar doesn't have it), the network is closed while it looks and
+ * opened again if it stays. A player trying to join meanwhile finds
+ * nothing, hosts, and the two meet the next time one of them looks. */
+static void MergeAloneAir(void)
 {
     static uint32_t scanBuffer[0x4000 / 4];
     static bool scanHostingFails;
     udsNetworkScanInfo *nets = NULL;
     size_t total = 0, target = 0;
-    uint32_t now = LocalLink_Milliseconds();
     bool found = false;
     Result ret = -1;
 
-    if (!sL.hosting || sL.myId == 0 || now < sL.nextMergeMs || now >= sL.mergeUntilMs
-     || (sL.nodeMask & ~(1u << (sL.myId - 1))))
-        return;
-    sL.nextMergeMs = now + MERGE_MS + (uint32_t)(rand() % MERGE_JITTER_MS);
     if (!scanHostingFails)
     {
         ret = udsScanBeacons(scanBuffer, sizeof(scanBuffer), &nets, &total, COMM_ID, 0, NULL, true);
         if (R_FAILED(ret))
         {
-            CtrLog_Write(CTR_LOG_GAME, "local: no scanning while hosting (%08lx): closing the session to look", ret);
+            CtrLog_Write(CTR_LOG_GAME, "local: no scanning while hosting (%08lx): closing the session to look", (unsigned long)ret);
             scanHostingFails = true;
             free(nets);
             nets = NULL;
@@ -1364,7 +1405,7 @@ static void MergeAlone(void)
         ret = EnsureIdle() ? udsScanBeacons(scanBuffer, sizeof(scanBuffer), &nets, &total, COMM_ID, 0, NULL, false) : -1;
         if (R_FAILED(ret))
         {
-            CtrLog_Write(CTR_LOG_ERROR, "local: looking while alone failed (%08lx)", ret);
+            CtrLog_Write(CTR_LOG_ERROR, "local: looking while alone failed (%08lx)", (unsigned long)ret);
             free(nets);
             nets = NULL;
             total = 0;
@@ -1399,7 +1440,37 @@ static void MergeAlone(void)
     }
     TakeNetwork(!found);
 }
-#endif /* LOCAL_LINK_UDP */
+#endif /* not LOCAL_LINK_NO_UDS */
+
+/*
+ * A host still alone in its session looks for another session of its
+ * counter, and moves to it: one with players in it, or another lone host's
+ * if that host's token is lower (the other one stays put, so the two don't
+ * both move). Nobody is linked to a lone host, so the adapter carries on
+ * as it was: the session's generation stays the same.
+ *
+ * With both radios in, the air is looked first (the consoles nearby); a
+ * bridge the socket has heard — the way to the Switch's GBA games — is
+ * moved to if the air had nothing.
+ */
+static void MergeAlone(void)
+{
+    uint32_t now = LocalLink_Milliseconds();
+
+    if (!sL.hosting || sL.myId == 0 || now < sL.nextMergeMs || now >= sL.mergeUntilMs
+     || (sL.nodeMask & ~(1u << (sL.myId - 1))))
+        return;
+    sL.nextMergeMs = now + MERGE_MS + (uint32_t)(rand() % MERGE_JITTER_MS);
+#if !defined(LOCAL_LINK_NO_UDS) && defined(LOCAL_LINK_UDP)
+    MergeAloneAir();
+    if (sL.hosting && (sL.nodeMask & ~(1u << (sL.myId - 1))) == 0)
+        MergeToWire(); /* still lone: the bridge the socket heard, then */
+#elif !defined(LOCAL_LINK_NO_UDS)
+    MergeAloneAir();
+#elif defined(LOCAL_LINK_UDP)
+    MergeToWire();
+#endif
+}
 
 static void StartSession(uint8_t kind)
 {
@@ -1469,7 +1540,7 @@ static void DropSilent(uint32_t now)
             EndSession(LOCAL_SESSION_NONE);
             return;
         }
-#ifndef LOCAL_LINK_UDP
+#ifndef LOCAL_LINK_NO_UDS
         if (sL.hosting)
             udsEjectClient(id);
 #endif
@@ -1482,7 +1553,6 @@ static void DropSilent(uint32_t now)
 
 /* Messages waiting for their ack, or an ack waiting to go: the thread looks
  * again soon (lock held). */
-#ifndef LOCAL_LINK_UDP
 static bool Unacked(void)
 {
     for (uint16_t id = 1; id < NODE_SLOTS; id++)
@@ -1490,14 +1560,11 @@ static bool Unacked(void)
             return true;
     return false;
 }
-#endif
 
 static void LocalThread(void *unused)
 {
-#ifndef LOCAL_LINK_UDP
-    bool frameReady = false; /* the bind's event woke us */
+    bool frameReady = false; /* the bind's event woke us (the air) */
     uint32_t lastRead = 0;
-#endif
 
     (void)unused;
     /* rand() is per thread (newlib's reent): unseeded here it started from 1
@@ -1539,10 +1606,17 @@ static void LocalThread(void *unused)
         {
             uint32_t now = LocalLink_Milliseconds();
 
+#if defined(LOCAL_LINK_UDP) && !defined(LOCAL_LINK_NO_UDS)
+            if (sL.backend == BACKEND_AIR && sL.hosting)
+                UdpHearBeacons(); /* a lone host on the air hears the wire's bridges */
+#endif
+#ifndef LOCAL_LINK_NO_UDS
+            if (sL.backend == BACKEND_AIR)
+                UpdateNodes();
+#endif
 #ifdef LOCAL_LINK_UDP
-            UdpUpdate(now); /* the beacon, if we host */
-#else
-            UpdateNodes();
+            if (sL.backend == BACKEND_WIRE)
+                UdpUpdate(now); /* the beacon, if we host */
 #endif
             if (sL.inNetwork)
                 DropSilent(now);
@@ -1550,15 +1624,11 @@ static void LocalThread(void *unused)
                 MergeAlone();
             if (sL.inNetwork)
             {
-#ifdef LOCAL_LINK_UDP
-                ReadFrames(); /* the socket is heard each pass: it never blocks long */
-#else
-                if (frameReady || now - lastRead >= IDLE_MS)
+                if (sL.backend == BACKEND_WIRE || frameReady || now - lastRead >= IDLE_MS)
                 {
                     ReadFrames();
                     lastRead = now;
                 }
-#endif
                 LightLock_Lock(&sL.lock);
                 for (uint16_t id = 1; id < NODE_SLOTS; id++)
                     if (sL.nodes[id].present && id != sL.myId)
@@ -1580,30 +1650,20 @@ static void LocalThread(void *unused)
         {
             Handle handles[2];
             s32 count = 0, which = -1;
+            bool busy;
             uint32_t wait;
 
-#ifdef LOCAL_LINK_UDP
-            /* Nothing signals the socket: the frames are read each pass, and
-             * the wait is only how long the game may keep us. In a session
-             * the look comes often; a frame that arrives waits for it. */
-            wait = (sL.inNetwork ? WAIT_MS : IDLE_MS) * 1000000LL;
-#else
-            bool busy;
-
             LightLock_Lock(&sL.lock);
-            busy = Unacked();
+            busy = sL.backend == BACKEND_WIRE || Unacked();
             LightLock_Unlock(&sL.lock);
             wait = (sL.inNetwork && busy ? WAIT_MS : IDLE_MS) * 1000000LL;
-#endif
             handles[count++] = sL.wake;
-#ifndef LOCAL_LINK_UDP
-            if (sL.inNetwork && sL.bind.event)
+#ifndef LOCAL_LINK_NO_UDS
+            if (sL.inNetwork && sL.backend == BACKEND_AIR && sL.bind.event)
                 handles[count++] = sL.bind.event;
 #endif
             svcWaitSynchronizationN(&which, handles, count, false, wait);
-#ifndef LOCAL_LINK_UDP
             frameReady = which == 1;
-#endif
             sL.stats.wakes++;
         }
     }
@@ -1694,7 +1754,8 @@ void LocalLink_Shutdown(void)
     if (sL.socReady)
         socExit();
     sL.socReady = false;
-#else
+#endif
+#ifndef LOCAL_LINK_NO_UDS
     if (sL.udsReady)
         udsExit();
     sL.udsReady = false;

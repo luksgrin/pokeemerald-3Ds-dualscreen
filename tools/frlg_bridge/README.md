@@ -12,17 +12,22 @@ flow is the reliable one; the Switch cannot join a hidden network the 3DS
 would host, and the 3DS cannot host LDN).
 
 Today this directory holds the 3DS-side harness only: `bridge.py` hosts a
-session a UDP build of `3ds_port/src/3ds_local.c` can find, and speaks the
-adapter's side of a trade. The Switch leg (a small board hosting the LDN
+session a build of `3ds_port/src/3ds_local.c` with the wire in can find
+(the merged build finds it by itself once alone), and speaks the adapter's
+side of a trade. The Switch leg (a small board hosting the LDN
 network, relaying to this one) is its own program and comes later; the wire
 between the two legs is the adapter's message stream, and the board
 carries these very bytes.
 
 ## The build
 
-`make LOCAL_LINK_BACKEND=udp` (in `3ds_port/`) builds the port with the
-session over a socket instead of UDS: beacons instead of scans, datagrams
-instead of the bind's frames. Everything else — the message streams, the
+The usual build (`make`, in `3ds_port/`; `LOCAL_LINK_BACKEND ?= both`) has
+both radios: a session is hosted on the air (UDS, consoles nearby as
+always), a search hears the air and then the wire, and a lone host moves to
+a bridge it hears. `make LOCAL_LINK_BACKEND=udp` builds the wire alone —
+beacons instead of scans, datagrams instead of the bind's frames, no play
+with unmodified consoles — which is the test build until the merged one has
+been through a real 3DS. Everything else — the message streams, the
 counters, the adapter — is the same file, `3ds_port/src/3ds_local.c`.
 
 On a development machine without a 3DS, the whole layer is checked by
@@ -30,9 +35,10 @@ On a development machine without a 3DS, the whole layer is checked by
     cd 3ds_port && make verify-local-udp PYTHON=python3
 
 which builds `3ds_local.c` for the host (libctru doubled in
-`tests/local_host/`) and runs `tests/local_udp_test.c` against this
-bridge on loopback: the join, the advert, the PEER_* exchange, a burst
-long enough to split over frames, and the leave.
+`tests/local_host/`, the wire-only build, the air's builds syntax-checked)
+and runs `tests/local_udp_test.c` against this bridge on loopback: the
+join, the advert, the PEER_* exchange, a burst long enough to split over
+frames, and the leave.
 
 ## Usage
 
@@ -44,10 +50,13 @@ Corner, 4 Berry Blender, 5 Contest, 6 Battle Tower. `--loopback` also
 beacons to 127.0.0.1, for tests on one machine. The bridge gives up on a
 player silent for 6 s and looks for a new one; Ctrl-C ends it.
 
-The 3DS runs the UDP build and starts a session at a counter; the bridge's
-beacons (every 500 ms, to port 58325) are what its search finds. It joins
-as player 2, the bridge hosts as player 1, and the game plays as at any
-counter.
+The 3DS runs a build with the wire in it (`both`, or `udp` for the test)
+and starts a session at a counter; the bridge's beacons (every 500 ms, to
+port 58325) are what its search finds there. It joins as player 2, the
+bridge hosts as player 1, and the game plays as at any counter. In the
+merged build a lone host at the counter finds the bridge by itself: it
+leaves its empty session and joins (see MergeAlone in `3ds_local.c`), so
+the bridge can come up before or after the game does.
 
 ## The wire
 

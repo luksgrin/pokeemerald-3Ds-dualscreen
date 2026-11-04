@@ -204,4 +204,49 @@ static inline void threadFree(Thread t) { free(t); }
 static inline Result socInit(void *buffer, size_t size) { (void)buffer; (void)size; return 0; }
 static inline Result socExit(void) { return 0; }
 
+/* ---- UDS: declarations only, for a syntax check of the builds with the
+ * air in them (-fsyntax-only; a host cannot run the system's wireless, and
+ * the wire-only build of the test references none of it). ------------------- */
+
+#define UDS_DATAFRAME_MAXSIZE 0x5C6
+#define UDS_SENDFLAG_Default 1
+#define UDS_BROADCAST_NETWORKNODEID 1
+#define UDS_DEFAULT_RECVBUFSIZE 0x3400
+
+typedef enum { UDSCONTYPE_Client = 4 } udsConnectionType;
+
+typedef struct
+{
+    u32 status;
+    u32 cur_NetworkNodeID;
+    u32 total_nodes;
+    u32 node_bitmask;
+} udsConnectionStatus;
+
+typedef struct { u8 total_nodes; u8 max_nodes; } udsNetworkStruct;
+typedef struct { udsNetworkStruct network; } udsNetworkScanInfo;
+typedef struct { Handle event; } udsBindContext;
+
+Result udsInit(size_t sharedmem_size, const void *extra);
+Result udsExit(void);
+bool udsWaitConnectionStatusEvent(bool next, bool wait);
+Result udsGetConnectionStatus(udsConnectionStatus *status);
+Result udsSendTo(u16 nid, u8 channel, u32 flags, const void *data, size_t size);
+Result udsPullPacket(const udsBindContext *bind, void *buf, size_t size, size_t *actual_size, u16 *nid);
+Result udsScanBeacons(void *buf, size_t size, udsNetworkScanInfo **nets, size_t *max_nets,
+                      u32 id, u8 id_offset, const void *filter, bool regex);
+Result udsGetNetworkStructApplicationData(const udsNetworkStruct *net, void *data, size_t size,
+                                          size_t *actual_size);
+Result udsConnectNetwork(const udsNetworkStruct *net, const char *passphrase, size_t passphrase_size,
+                         udsBindContext *bind, u16 nid, udsConnectionType type, u8 channel,
+                         u32 recvbufsize);
+Result udsCreateNetwork(const udsNetworkStruct *net, const char *passphrase, size_t passphrase_size,
+                        udsBindContext *bind, u8 channel, u32 recvbufsize);
+Result udsDestroyNetwork(void);
+Result udsDisconnectNetwork(void);
+Result udsUnbind(udsBindContext *bind);
+Result udsEjectClient(u16 nid);
+Result udsSetApplicationData(const void *data, u32 size);
+Result udsGenerateDefaultNetworkStruct(udsNetworkStruct *net, u32 id, u8 id_offset, u8 max_nodes);
+
 #endif

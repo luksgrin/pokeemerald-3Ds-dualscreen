@@ -266,6 +266,28 @@ broadcast block the *game* shows (today the harness answers with a zero block); 
 build-id gate is waived only for bridge-flagged beacons (kind matching stays strict,
 so sessions still pair counter-to-counter).
 
+### Merged build (both radios in one 3dsx) — 2026-11-04
+
+`LOCAL_LINK_BACKEND=both` (now the Makefile default) compiles the air and the wire
+into one build; `LOCAL_LINK_NO_UDS` (the `udp` value) keeps the wire-only test build.
+What the merged build does:
+
+- **Hosting** is always on the air (UDS) — the wire's `HostSession` exists only in the
+  wire-only build.
+- **Searching** (`JoinNearby`) scans the air first, then listens on the socket
+  (100 ms), until the budget runs out; either can win.
+- **A lone air host migrates**: `UdpHearBeacons` (each thread pass, while hosting
+  alone) keeps the freshest bridge beacon; `MergeAlone` looks over the air first and,
+  if it had nothing, moves to a fresh bridge session (`MergeToWire`), generation
+  unchanged.
+- The air-scan fallback in `EnsureIdle` treats the two radios independently: the
+  session fails only if neither comes up.
+
+Host-side verification: `make verify-local-udp` now syntax-checks the uds and both
+builds (declarations-only UDS in `tests/local_host/3ds.h`) and runs the wire-only
+build against the bridge (PASS). The air half of the merged build needs a real 3DS —
+that is B1.
+
 ---
 
 ## Results / notes
