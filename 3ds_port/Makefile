@@ -53,6 +53,16 @@ SOURCES += src/3ds_corner_art.c
 SOURCES += src/3ds_dex_top.c
 # Local wireless play (include/3ds_local.h).
 SOURCES += src/3ds_local.c
+# The transport of the local wireless emulation (src/3ds_local.c): uds, the
+# system's local wireless, for consoles nearby; udp, a session over a socket
+# instead, whose host is a bridge on the network (tools/frlg_bridge) — the
+# leg toward the Switch's GBA games. make LOCAL_LINK_BACKEND=udp
+LOCAL_LINK_BACKEND ?= uds
+ifeq ($(LOCAL_LINK_BACKEND),udp)
+GAMEFLAGS += -DLOCAL_LINK_UDP
+else ifneq ($(LOCAL_LINK_BACKEND),uds)
+$(error LOCAL_LINK_BACKEND must be uds or udp)
+endif
 SOURCES += src/3ds_daynight.c
 SOURCES += src/3ds_clock_store.c
 # The optional Nuzlocke tracker's state and save-bound record (3ds_nuzlocke_core.h).
@@ -350,6 +360,14 @@ verify-rng-seeding:
 verify: verify-bottom-taps
 verify-bottom-taps:
 	"$(PYTHON)" tests/bottom_taps_test.py --cc "$(HOSTCC)"
+
+# The bridge leg of local wireless play (src/3ds_local.c, LOCAL_LINK_UDP):
+# built for the host and run against tools/frlg_bridge/bridge.py on loopback.
+.PHONY: verify-local-udp
+verify: verify-local-udp
+verify-local-udp:
+	"$(PYTHON)" tests/local_udp_test.py --cc "$(HOSTCC)"
+
 .PHONY: verify-field-view
 verify-field-view: build/field_view_test$(EXESUFFIX)
 	./build/field_view_test$(EXESUFFIX)

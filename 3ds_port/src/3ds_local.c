@@ -36,6 +36,12 @@
  * 2 ms, 500 requests a second to the wireless service even with nothing to
  * read; on an Old 3DS that service shares the system core with the GPU's,
  * and a link battle dropped to 30 fps.
+ *
+ * Another build of this file, LOCAL_LINK_UDP, keeps the message streams and
+ * the game's side but puts them over a UDP socket instead of UDS: the
+ * session's host is not this system's wireless but a bridge on the network
+ * (tools/frlg_bridge, and later a small board by the Switch), and its
+ * beacons, not radio scans, are what a search finds.
  */
 #include <3ds.h>
 #include <stdbool.h>
@@ -45,7 +51,21 @@
 #include "3ds_local.h"
 #include "3ds_log.h"
 #include "3ds_platform.h"
+/* The counters' kinds and states are the game's own (the wireless patch
+ * makes them); the host tests have theirs until the tree is bootstrapped. */
+#if defined(__has_include) && __has_include("../../include/constants/local_link.h")
 #include "../../include/constants/local_link.h"
+#else
+#include "../tests/local_host/constants_stub.h"
+#endif
+#ifdef LOCAL_LINK_UDP
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 /* UDS: our network's id and passphrase, and our data channel. */
 #define COMM_ID 0x45E3D501u
@@ -131,6 +151,43 @@ struct AppData
 static uint8_t sBuildId[BUILD_ID_SIZE];
 static char sPassphrase[sizeof(PASSPHRASE) + 2 * 16 + 2];
 
+#ifdef LOCAL_LINK_UDP
+/* The bridge leg (tools/frlg_bridge): the same message streams, over a UDP
+ * socket instead of UDS. The session's host is not this system's wireless
+ * but a program on the network — the bridge — which sits at the counter's
+ * other side. It broadcasts a beacon every UDP_BEACON_MS: the AppData of a
+ * UDS beacon, before it a sender's id, flags, and how many are in. A system
+ * looking for a session hears the beacons on the same socket and joins the
+ * one it likes; data goes straight to its recipient, every datagram naming
+ * its sender. A beacon is told from a frame by the AppData magic that
+ * follows the name. A bridge is a build of its own: a beacon flagged as one
+ * is joined whatever build it names. A session of two: the bridge is 1, we
+ * are 2. */
+#define UDP_PORT 58325
+#define UDP_BEACON_MS 500
+#define UDP_BEACON_STALE_MS 2000
+#define UDP_FLAG_BRIDGE 1
+#define UDP_CLIENT_ID 2
+
+struct UdpBeacon
+{
+    uint16_t senderId;
+    uint16_t flags;
+    uint8_t players;   /* in the session now, the host counts itself */
+    uint8_t maxPlayers;
+    uint16_t reserved;
+    struct AppData app; /* from here: what a UDS beacon's data says */
+};
+
+/* The two sizes are told here, for the bridge lays the same bytes out. */
+_Static_assert(sizeof(struct AppData) == 44, "AppData is 44 bytes on the wire");
+_Static_assert(sizeof(struct UdpBeacon) == 52, "UdpBeacon is 52 bytes on the wire");
+
+/* socInit's buffer, and what the socket reads: a named frame at most. */
+static uint32_t sSocBuffer[0x40000] __attribute__((aligned(0x1000)));
+static uint8_t sUdpBuf[2 + FRAME_MAX + 8];
+#endif
+
 enum
 {
     SESSION_NO,    /* not one of ours, or another counter's */
@@ -187,7 +244,22 @@ static struct
     uint32_t mergeUntilMs; /* and not after this */
     uint16_t myId;
     uint32_t generation;
+#ifdef LOCAL_LINK_UDP
+    /* The socket's bookkeeping: where the session's host is (a client),
+     * where each player is (a host), and the last beacon seen. */
+    int sock;
+    bool socReady;   /* the system's sockets are up: once; it survives sleep */
+    bool radioReady; /* our socket is bound */
+    struct sockaddr_in hostAddr;
+    bool haveHost;
+    struct sockaddr_in peerAddr[NODE_SLOTS];
+    uint32_t nextBeaconMs;
+    struct UdpBeacon beacon;
+    struct sockaddr_in beaconAddr;
+    uint32_t beaconMs;
+#else
     udsBindContext bind;
+#endif
 
     struct Node nodes[NODE_SLOTS];
     uint16_t nodeMask; /* nodes in the session, us included */
@@ -204,7 +276,11 @@ static struct
     struct { uint32_t wakes, pulls, framesIn, framesOut, resent, sinceMs; } stats;
 } sL;
 
+#ifdef LOCAL_LINK_UDP
+static uint8_t sFrame[FRAME_MAX + 12]; /* a frame: the header, the messages, and padding */
+#else
 static uint8_t sFrame[UDS_DATAFRAME_MAXSIZE];
+#endif
 
 uint32_t LocalLink_Milliseconds(void)
 {
@@ -381,13 +457,121 @@ static void HandleFrame(uint16_t from, const uint8_t *frame, size_t size)
     }
 }
 
+/* ---- The bridge leg: the socket ------------------------------------------ */
+
+#ifdef LOCAL_LINK_UDP
+
+/* A datagram from the socket, having waited at most waitMs for one: its
+ * size, 0 (none came, or a slip), or -1 (no socket). */
+static int UdpPull(struct sockaddr_in *src, void *buf, uint32_t size, int waitMs)
+{
+    struct sockaddr_in anywhere;
+    struct timeval tv = { waitMs / 1000, (waitMs % 1000) * 1000 };
+    fd_set set;
+    socklen_t len;
+    int got;
+
+    if (sL.sock < 0)
+        return -1;
+    if (src == NULL)
+        src = &anywhere;
+    len = sizeof(*src);
+    if (waitMs)
+    {
+        FD_ZERO(&set);
+        FD_SET(sL.sock, &set);
+        if (select(sL.sock + 1, &set, NULL, NULL, &tv) <= 0)
+            return 0;
+    }
+    got = (int)recvfrom(sL.sock, buf, size, 0, (struct sockaddr *)src, &len);
+    return got < 0 ? 0 : got;
+}
+
+/* One datagram to one player, its sender's name in front: the receiver
+ * reads the name, and the frame behind it. A client sends everything to the
+ * host it joined; a host sends to where a player's datagrams came from. */
+static int UdpSendTo(uint16_t id, const void *buf, uint32_t len)
+{
+    static uint8_t wire[2 + FRAME_MAX + 12];
+    const struct sockaddr_in *to = NULL;
+
+    if (!sL.hosting)
+        to = sL.haveHost ? &sL.hostAddr : NULL;
+    else if (id < NODE_SLOTS)
+        to = sL.peerAddr[id].sin_port ? &sL.peerAddr[id] : NULL;
+    if (to == NULL || sL.sock < 0 || len > sizeof(wire) - 2)
+        return -1;
+    /* sendto copies the bytes before it returns: the scratch is ours again
+     * at once. Only the local thread sends. */
+    wire[0] = sL.myId & 0xFF;
+    wire[1] = sL.myId >> 8;
+    memcpy(wire + 2, buf, len);
+    return (int)sendto(sL.sock, wire, len + 2, 0, (const struct sockaddr *)to, sizeof(*to));
+}
+
+/* The beacon a host sends: what a UDS beacon's data says, with a name,
+ * flags and the count of players in front of it. */
+static void UdpBeaconSend(void)
+{
+    struct UdpBeacon b;
+    struct sockaddr_in to;
+
+    memset(&b, 0, sizeof(b));
+    b.senderId = 1;
+    b.players = 0;
+    b.maxPlayers = MAX_NODES;
+    for (uint16_t id = 1; id < NODE_SLOTS; id++)
+        b.players += sL.nodes[id].present ? 1 : 0;
+    b.app.version = PROTOCOL_VERSION;
+    b.app.kind = sL.kind;
+    b.app.token = sL.token;
+    memcpy(b.app.magic, kMagic, sizeof(kMagic));
+    memcpy(b.app.build, sBuildId, BUILD_ID_SIZE);
+    memset(&to, 0, sizeof(to));
+    to.sin_family = AF_INET;
+    to.sin_port = htons(UDP_PORT);
+    to.sin_addr.s_addr = INADDR_BROADCAST;
+    sendto(sL.sock, &b, sizeof(b), 0, (struct sockaddr *)&to, sizeof(to));
+}
+
+/* Is the datagram a beacon, and which: laid out as sent. */
+static bool UdpBeaconAt(const uint8_t *buf, uint32_t len, struct UdpBeacon *b)
+{
+    if (len < sizeof(*b) || memcmp(buf + 8, kMagic, sizeof(kMagic)) != 0)
+        return false;
+    memcpy(b, buf, sizeof(*b));
+    return true;
+}
+
+/* A lone host keeps the beacon it saw, for its next look around. */
+static void UdpBeaconSeen(const struct sockaddr_in *src, const struct UdpBeacon *b)
+{
+    if (!sL.hosting || sL.myId == 0 || (sL.nodeMask & ~(1u << (sL.myId - 1))))
+        return;
+    sL.beacon = *b;
+    sL.beaconAddr = *src;
+    sL.beaconMs = LocalLink_Milliseconds();
+}
+
+/* The thread's pass over the socket: a host's beacon, when it is due. */
+static void UdpUpdate(uint32_t now)
+{
+    if (!sL.inNetwork || !sL.hosting || sL.sock < 0)
+        return;
+    if (sL.nextBeaconMs && (int32_t)(now - sL.nextBeaconMs) < 0)
+        return;
+    sL.nextBeaconMs = now + UDP_BEACON_MS;
+    UdpBeaconSend();
+}
+
+#endif /* LOCAL_LINK_UDP */
+
 /* ---- The thread's side of UDS ------------------------------------------- */
 
 static void SendFrame(uint16_t to, uint32_t bodyLen)
 {
     struct FrameHeader *h = (struct FrameHeader *)sFrame;
     uint32_t size = (sizeof(*h) + bodyLen + 3) & ~3u;
-    Result ret;
 
     h->magic = FRAME_MAGIC;
     h->version = PROTOCOL_VERSION;
@@ -399,13 +583,30 @@ static void SendFrame(uint16_t to, uint32_t bodyLen)
      * several times a frame. The frame is ours (only this thread uses sFrame),
      * and meanwhile the game can only add messages behind the ones in it. */
     LightLock_Unlock(&sL.lock);
-    ret = udsSendTo(to, DATA_CHANNEL, UDS_SENDFLAG_Default, sFrame, size);
+#ifdef LOCAL_LINK_UDP
+    {
+        int sent = UdpSendTo(to, sFrame, size);
+
+        LightLock_Lock(&sL.lock);
+        sL.stats.framesOut++;
+        if (sent < 0)
+        {
+            static unsigned told;
+
+            if (told++ < 8)
+                CtrLog_Write(CTR_LOG_ERROR, "local: send to %u failed (errno %d)", to, errno);
+        }
+    }
+#else
+    Result ret = udsSendTo(to, DATA_CHANNEL, UDS_SENDFLAG_Default, sFrame, size);
+
     LightLock_Lock(&sL.lock);
     sL.stats.framesOut++;
     /* UDS_CHECK_SENDTO_FATALERROR, which -Wsign-compare rejects: that one
      * error only means the frame wasn't sent. */
     if (R_FAILED(ret) && (u32)ret != 0xC86113F0u)
         CtrLog_Write(CTR_LOG_ERROR, "local: send to %u failed (%08lx)", to, ret);
+#endif
 }
 
 /* What's due to one system: messages not sent yet, and when the oldest has
@@ -458,6 +659,49 @@ static void FlushNode(uint16_t id, uint32_t now)
     }
 }
 
+#ifdef LOCAL_LINK_UDP
+static void ReadFrames(void)
+{
+    for (int i = 0; i < 64; i++)
+    {
+        struct sockaddr_in src;
+        struct UdpBeacon beacon;
+        uint16_t id;
+        int got = UdpPull(&src, sUdpBuf, sizeof(sUdpBuf), 0);
+
+        if (got <= 0)
+            break; /* nothing more in the socket now */
+        if (got < 3)
+            continue;
+        if (UdpBeaconAt(sUdpBuf, (uint32_t)got, &beacon))
+        {
+            UdpBeaconSeen(&src, &beacon);
+            continue;
+        }
+        id = sUdpBuf[0] | (sUdpBuf[1] << 8);
+        if (id == 0 || id >= NODE_SLOTS || id == sL.myId)
+            continue;
+        /* A client hears its host only. A host hears a player it does not
+         * know too, whose first datagram is then where it is: but a session
+         * of two is what the bridge leg is for, and one with a player hears
+         * no other. */
+        if (!sL.hosting
+         && (!sL.haveHost || memcmp(&src.sin_addr, &sL.hostAddr.sin_addr, sizeof(src.sin_addr)) != 0
+          || src.sin_port != sL.hostAddr.sin_port))
+            continue;
+        if (sL.hosting && !sL.nodes[id].present && (sL.nodeMask & ~(1u << (sL.myId - 1))))
+            continue;
+        sL.stats.framesIn++;
+        LightLock_Lock(&sL.lock);
+        if (sL.hosting && !sL.nodes[id].present && sL.peerAddr[id].sin_port == 0)
+            sL.peerAddr[id] = src;
+        HandleFrame(id, sUdpBuf + 2, (size_t)got - 2);
+        if (sL.nodes[id].present && !(sL.nodeMask & (1u << (id - 1))))
+            sL.nodeMask |= 1u << (id - 1);
+        LightLock_Unlock(&sL.lock);
+    }
+}
+#else
 static void ReadFrames(void)
 {
     /* Cleared before reading: a frame that comes in meanwhile signals it
@@ -487,6 +731,7 @@ static void ReadFrames(void)
         LightLock_Unlock(&sL.lock);
     }
 }
+#endif /* LOCAL_LINK_UDP */
 
 static void EndSession(uint8_t state)
 {
@@ -502,6 +747,21 @@ static void EndSession(uint8_t state)
 
 static void LeaveNetwork(bool quiet)
 {
+#ifdef LOCAL_LINK_UDP
+    /* Nothing to tell the network: it is the bookkeeping that is left. */
+    if (!sL.inNetwork)
+        return;
+    sL.inNetwork = false;
+    sL.haveHost = false;
+    memset(sL.peerAddr, 0, sizeof(sL.peerAddr));
+    memset(&sL.beacon, 0, sizeof(sL.beacon));
+    memset(&sL.beaconAddr, 0, sizeof(sL.beaconAddr));
+    sL.beaconMs = 0;
+    sL.nextBeaconMs = 0;
+    sL.hosting = false;
+    if (!quiet)
+        CtrLog_Write(CTR_LOG_GAME, "local: left the session");
+#else
     Result left, unbound;
 
     if (!sL.inNetwork)
@@ -514,8 +774,10 @@ static void LeaveNetwork(bool quiet)
         CtrLog_Write(CTR_LOG_ERROR, "local: leaving: %08lx, unbinding: %08lx", left, unbound);
     else if (!quiet)
         CtrLog_Write(CTR_LOG_GAME, "local: left the session");
+#endif
 }
 
+#ifndef LOCAL_LINK_UDP
 /* Who's in the network now: players joining and leaving. */
 static void UpdateNodes(void)
 {
@@ -555,8 +817,92 @@ static void UpdateNodes(void)
     sL.nodeMask = mask;
     LightLock_Unlock(&sL.lock);
 }
+#endif /* !LOCAL_LINK_UDP */
 
-static bool StartUds(void)
+#ifdef LOCAL_LINK_UDP
+
+/* The system's sockets, then ours: a socket on the port, open to broadcast
+ * and hearing it. socInit done, it stays; the socket does not survive a
+ * sleep (the wireless does not either), and is bound again for a session. */
+static bool StartRadio(void)
+{
+    struct sockaddr_in addr;
+    int on = 1;
+
+    if (sL.radioReady)
+        return true;
+    /* Right after the system wakes the network takes a moment to come back:
+     * a few tries before the wireless counts as switched off. */
+    for (int tries = 0; tries < 8 && !sL.quit; tries++)
+    {
+        if (tries)
+            svcSleepThread(250000000LL);
+        if (!sL.socReady)
+        {
+            Result ret = socInit(sSocBuffer, sizeof(sSocBuffer));
+
+            if (R_FAILED(ret))
+            {
+                static unsigned told;
+
+                if (told++ < 8)
+                    CtrLog_Write(CTR_LOG_ERROR, "local: socInit failed (%08lx)", (unsigned long)ret);
+                continue;
+            }
+            sL.socReady = true;
+        }
+        sL.sock = socket(AF_INET, SOCK_DGRAM, 0);
+        if (sL.sock < 0)
+            continue;
+        setsockopt(sL.sock, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on));
+        fcntl(sL.sock, F_SETFL, O_NONBLOCK);
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = INADDR_ANY;
+        addr.sin_port = htons(UDP_PORT);
+        if (bind(sL.sock, (struct sockaddr *)&addr, sizeof(addr)) == 0)
+        {
+            sL.radioReady = true;
+            CtrLog_Write(CTR_LOG_GAME, "local: the socket is up, port %u", UDP_PORT);
+            return true;
+        }
+        close(sL.sock);
+        sL.sock = -1;
+    }
+    CtrLog_Write(CTR_LOG_ERROR, "local: no socket, the wireless is off?");
+    return false;
+}
+
+/* After sleep: the system switched the wireless off, and the socket with
+ * it. Closed here, it is bound again for the next session. */
+static void AfterWake(void)
+{
+    bool was = sL.inNetwork;
+
+    if (sL.inNetwork)
+        LeaveNetwork(true);
+    if (sL.radioReady)
+    {
+        close(sL.sock);
+        sL.sock = -1;
+        sL.radioReady = false;
+    }
+    sL.hosting = false;
+    if (was || sL.state == LOCAL_SESSION_IN || sL.state == LOCAL_SESSION_SEARCHING)
+        EndSession(LOCAL_SESSION_NONE);
+    CtrLog_Write(CTR_LOG_GAME, "local: woke from sleep: the socket closed%s", was ? ", session ended" : "");
+}
+
+/* Before looking or hosting: the socket bound, or bound again. Nothing of a
+ * session is left in it between sessions. */
+static bool EnsureIdle(void)
+{
+    return StartRadio();
+}
+
+#else /* UDS */
+
+static bool StartRadio(void)
 {
     Result ret = 0;
 
@@ -606,7 +952,7 @@ static void AfterWake(void)
 /* The wireless service started again: what it was in is gone. On hardware it
  * was once left refusing to scan or host (c8a113ea, a wrong state) after a
  * session ended. */
-static bool RestartUds(void)
+static bool RestartRadio(void)
 {
     CtrLog_Write(CTR_LOG_GAME, "local: restarting the wireless service");
     if (sL.inNetwork)
@@ -617,7 +963,7 @@ static bool RestartUds(void)
         udsExit();
     sL.udsReady = false;
     svcSleepThread(100000000LL);
-    return StartUds();
+    return StartRadio();
 }
 
 /* Before scanning or hosting: the service in no network (nothing left over
@@ -627,7 +973,7 @@ static bool EnsureIdle(void)
     udsConnectionStatus st;
     Result ret;
 
-    if (!StartUds())
+    if (!StartRadio())
         return false;
     ret = udsGetConnectionStatus(&st);
     if (R_SUCCEEDED(ret) && st.status == STATUS_IDLE)
@@ -643,8 +989,10 @@ static bool EnsureIdle(void)
     sL.hosting = false;
     if (R_SUCCEEDED(udsGetConnectionStatus(&st)) && st.status == STATUS_IDLE)
         return true;
-    return RestartUds();
+    return RestartRadio();
 }
+
+#endif /* LOCAL_LINK_UDP */
 
 static const char *BuildHex(char *out, const uint8_t *id)
 {
@@ -653,6 +1001,48 @@ static const char *BuildHex(char *out, const uint8_t *id)
     return out;
 }
 
+#ifdef LOCAL_LINK_UDP
+/* What a beacon says about the session looked for. */
+static int UdpSessionCheck(const struct UdpBeacon *b, uint8_t kind, uint32_t *token)
+{
+    if (memcmp(b->app.magic, kMagic, sizeof(kMagic)) != 0)
+        return SESSION_NO;
+    if (b->app.kind != kind)
+        return SESSION_NO;
+    /* A bridge is a build of its own, and serves all of ours: what its
+     * beacon names is not held against it. */
+    if (b->app.version != PROTOCOL_VERSION
+     || (!(b->flags & UDP_FLAG_BRIDGE) && memcmp(b->app.build, sBuildId, BUILD_ID_SIZE) != 0))
+    {
+        static uint8_t told[BUILD_ID_SIZE];
+
+        if (!(b->flags & UDP_FLAG_BRIDGE) && memcmp(told, b->app.build, sizeof(told)) != 0)
+        {
+            char hex[2 * BUILD_ID_SIZE + 1];
+
+            memcpy(told, b->app.build, sizeof(told));
+            CtrLog_Write(CTR_LOG_GAME, "local: a session of this counter nearby is another build (protocol %u, build %s)",
+                         b->app.version, BuildHex(hex, b->app.build));
+        }
+        return SESSION_OTHER;
+    }
+    if (token)
+        *token = b->app.token;
+    return SESSION_YES;
+}
+
+/* Joining is one thing: where the host is. Our first datagram there, our
+ * advert in it, tells it a player came. */
+static bool UdpConnect(const struct sockaddr_in *src, const struct UdpBeacon *b)
+{
+    sL.hostAddr = *src;
+    sL.haveHost = true;
+    sL.hosting = false;
+    CtrLog_Write(CTR_LOG_GAME, "local: joining the session at %s%s", inet_ntoa(src->sin_addr),
+                 (b->flags & UDP_FLAG_BRIDGE) ? ", the bridge" : "");
+    return true;
+}
+#else
 static int SessionCheck(const udsNetworkScanInfo *net, uint8_t kind, uint32_t *token)
 {
     struct AppData app = {0};   /* a short beacon leaves the rest unread */
@@ -697,6 +1087,7 @@ static bool Connect(const udsNetworkScanInfo *net)
     sL.hosting = false;
     return true;
 }
+#endif /* LOCAL_LINK_UDP */
 
 /* The search is no longer wanted: the game asked to leave or to start again,
  * the system slept, or the program is closing. Left to run, it went on to
@@ -712,6 +1103,34 @@ static bool SearchCancelled(void)
 }
 
 /* otherBuild: a session of this counter of another build was seen. */
+#ifdef LOCAL_LINK_UDP
+static bool JoinNearby(uint8_t kind, uint32_t lookMs, bool *otherBuild)
+{
+    uint32_t until = LocalLink_Milliseconds() + lookMs;
+
+    /* What gathered in the socket while nothing was going on: gone. */
+    while (UdpPull(NULL, sUdpBuf, sizeof(sUdpBuf), 0) > 0)
+        ;
+    do
+    {
+        struct sockaddr_in src;
+        struct UdpBeacon beacon;
+        uint32_t token = 0;
+        int check, got = UdpPull(&src, sUdpBuf, sizeof(sUdpBuf), 100);
+
+        if (got < 0)
+            return false;
+        if (got == 0 || !UdpBeaconAt(sUdpBuf, (uint32_t)got, &beacon))
+            continue;
+        check = UdpSessionCheck(&beacon, kind, &token);
+        if (check == SESSION_OTHER)
+            *otherBuild = true;
+        else if (check == SESSION_YES && UdpConnect(&src, &beacon))
+            return true;
+    } while (!SearchCancelled() && LocalLink_Milliseconds() < until);
+    return false;
+}
+#else
 static bool JoinNearby(uint8_t kind, uint32_t lookMs, bool *otherBuild)
 {
     int failures = 0;
@@ -730,7 +1149,7 @@ static bool JoinNearby(uint8_t kind, uint32_t lookMs, bool *otherBuild)
             CtrLog_Write(CTR_LOG_ERROR, "local: scan failed (%08lx)", ret);
             free(nets);
             /* Once more from scratch; then give up for this time. */
-            if (++failures > 1 || !RestartUds())
+            if (++failures > 1 || !RestartRadio())
                 return false;
             continue;
         }
@@ -750,7 +1169,18 @@ static bool JoinNearby(uint8_t kind, uint32_t lookMs, bool *otherBuild)
     } while (!SearchCancelled() && LocalLink_Milliseconds() < until);
     return false;
 }
+#endif /* LOCAL_LINK_UDP */
 
+#ifdef LOCAL_LINK_UDP
+static bool HostSession(uint8_t kind)
+{
+    (void)kind; /* the beacon says the rest: it is made when it is sent */
+    sL.hosting = true;
+    sL.nextBeaconMs = 0;
+    sL.nextMergeMs = LocalLink_Milliseconds() + MERGE_MS + (uint32_t)(rand() % MERGE_JITTER_MS);
+    return true;
+}
+#else
 static bool HostSession(uint8_t kind)
 {
     udsNetworkStruct net;
@@ -765,7 +1195,7 @@ static bool HostSession(uint8_t kind)
     if (R_FAILED(ret))
     {
         CtrLog_Write(CTR_LOG_ERROR, "local: hosting failed (%08lx)", ret);
-        if (!RestartUds())
+        if (!RestartRadio())
             return false;
         ret = udsCreateNetwork(&net, sPassphrase, strlen(sPassphrase) + 1, &sL.bind, DATA_CHANNEL,
                                UDS_DEFAULT_RECVBUFSIZE);
@@ -782,6 +1212,7 @@ static bool HostSession(uint8_t kind)
     sL.nextMergeMs = LocalLink_Milliseconds() + MERGE_MS + (uint32_t)(rand() % MERGE_JITTER_MS);
     return true;
 }
+#endif /* LOCAL_LINK_UDP */
 
 /* A new session hosted: lone, it may look for another for a while. */
 static bool HostNewSession(uint8_t kind)
@@ -794,6 +1225,30 @@ static bool HostNewSession(uint8_t kind)
 
 /* Who's in the network we just joined or made: our id, and the others so far
  * (the status event may already be spent). */
+#ifdef LOCAL_LINK_UDP
+/* A session of two: the host is 1 and we are 2. Its advert comes with its
+ * first messages, as ours go with ours. */
+static void TakeNetwork(bool quiet)
+{
+    sL.inNetwork = true;
+    LightLock_Lock(&sL.lock);
+    for (uint16_t id = 1; id < NODE_SLOTS; id++)
+        memset(&sL.nodes[id], 0, sizeof(sL.nodes[id]));
+    sL.myId = sL.hosting ? 1 : UDP_CLIENT_ID;
+    NodeJoined(sL.myId);
+    if (!sL.hosting)
+    {
+        NodeJoined(1);
+        sL.nodeMask = (1u << 0) | (1u << (sL.myId - 1));
+    }
+    else
+        sL.nodeMask = 1u << 0;
+    LightLock_Unlock(&sL.lock);
+    if (!quiet)
+        CtrLog_Write(CTR_LOG_GAME, "local: %s a session as player %u",
+                     sL.hosting ? "hosting" : "joined", sL.myId);
+}
+#else
 static void TakeNetwork(bool quiet)
 {
     udsConnectionStatus st = {0};
@@ -823,6 +1278,7 @@ static void TakeNetwork(bool quiet)
         CtrLog_Write(CTR_LOG_GAME, "local: %s a session as player %u (%u in it)",
                  sL.hosting ? "hosting" : "joined", st.cur_NetworkNodeID, st.total_nodes);
 }
+#endif /* LOCAL_LINK_UDP */
 
 /*
  * A host still alone in its session looks for another session of its
@@ -837,6 +1293,45 @@ static void TakeNetwork(bool quiet)
  * join meanwhile finds nothing, hosts, and the two meet the next time one
  * of them looks.
  */
+#ifdef LOCAL_LINK_UDP
+/* A host still alone looks around in the beacons its socket has heard: for
+ * another session of its counter to move to — one with players in it, or
+ * another lone host's if that host's token is lower (the other one stays
+ * put, so the two don't both move). Nobody is linked to a lone host, so the
+ * adapter carries on as it was: the session's generation stays the same. */
+static void MergeAlone(void)
+{
+    struct sockaddr_in addr;
+    struct UdpBeacon beacon;
+    uint32_t now = LocalLink_Milliseconds(), token = 0;
+
+    if (!sL.hosting || sL.myId == 0 || now < sL.nextMergeMs || now >= sL.mergeUntilMs
+     || (sL.nodeMask & ~(1u << (sL.myId - 1))))
+        return;
+    sL.nextMergeMs = now + MERGE_MS + (uint32_t)(rand() % MERGE_JITTER_MS);
+    if (!sL.beaconMs || now - sL.beaconMs >= UDP_BEACON_STALE_MS)
+        return;
+    if (UdpSessionCheck(&sL.beacon, sL.kind, &token) != SESSION_YES || token == sL.token)
+        return;
+    if (sL.beacon.players <= 1 && token > sL.token)
+        return;
+    addr = sL.beaconAddr;
+    beacon = sL.beacon;
+    CtrLog_Write(CTR_LOG_GAME, "local: another session of this counter nearby, moving to it");
+    LeaveNetwork(true);
+    if (UdpConnect(&addr, &beacon))
+    {
+        TakeNetwork(false);
+        return;
+    }
+    if (!HostSession(sL.kind))
+    {
+        EndSession(LOCAL_SESSION_FAILED);
+        return;
+    }
+    TakeNetwork(true);
+}
+#else
 static void MergeAlone(void)
 {
     static uint32_t scanBuffer[0x4000 / 4];
@@ -904,6 +1399,7 @@ static void MergeAlone(void)
     }
     TakeNetwork(!found);
 }
+#endif /* LOCAL_LINK_UDP */
 
 static void StartSession(uint8_t kind)
 {
@@ -966,15 +1462,17 @@ static void DropSilent(uint32_t now)
         if (!silent)
             continue;
         CtrLog_Write(CTR_LOG_GAME, "local: player %u silent for %lu ms, a message waiting %lu ms: gone", id,
-                     now - n->heardMs, now - n->out[n->outHead].firstMs);
+                     (unsigned long)(now - n->heardMs), (unsigned long)(now - n->out[n->outHead].firstMs));
         if (!sL.hosting && id == 1) /* the host */
         {
             LeaveNetwork(false);
             EndSession(LOCAL_SESSION_NONE);
             return;
         }
+#ifndef LOCAL_LINK_UDP
         if (sL.hosting)
             udsEjectClient(id);
+#endif
         LightLock_Lock(&sL.lock);
         NodeLeft(id);
         sL.nodeMask &= ~(1u << (id - 1));
@@ -984,6 +1482,7 @@ static void DropSilent(uint32_t now)
 
 /* Messages waiting for their ack, or an ack waiting to go: the thread looks
  * again soon (lock held). */
+#ifndef LOCAL_LINK_UDP
 static bool Unacked(void)
 {
     for (uint16_t id = 1; id < NODE_SLOTS; id++)
@@ -991,11 +1490,14 @@ static bool Unacked(void)
             return true;
     return false;
 }
+#endif
 
 static void LocalThread(void *unused)
 {
+#ifndef LOCAL_LINK_UDP
     bool frameReady = false; /* the bind's event woke us */
     uint32_t lastRead = 0;
+#endif
 
     (void)unused;
     /* rand() is per thread (newlib's reent): unseeded here it started from 1
@@ -1037,18 +1539,26 @@ static void LocalThread(void *unused)
         {
             uint32_t now = LocalLink_Milliseconds();
 
+#ifdef LOCAL_LINK_UDP
+            UdpUpdate(now); /* the beacon, if we host */
+#else
             UpdateNodes();
+#endif
             if (sL.inNetwork)
                 DropSilent(now);
             if (sL.inNetwork)
                 MergeAlone();
             if (sL.inNetwork)
             {
+#ifdef LOCAL_LINK_UDP
+                ReadFrames(); /* the socket is heard each pass: it never blocks long */
+#else
                 if (frameReady || now - lastRead >= IDLE_MS)
                 {
                     ReadFrames();
                     lastRead = now;
                 }
+#endif
                 LightLock_Lock(&sL.lock);
                 for (uint16_t id = 1; id < NODE_SLOTS; id++)
                     if (sL.nodes[id].present && id != sL.myId)
@@ -1059,8 +1569,10 @@ static void LocalThread(void *unused)
             {
                 if (sL.stats.sinceMs)
                     CtrLog_Write(CTR_LOG_GAME, "local: %u s: %lu wakes, %lu reads, %lu frames in, %lu out, %lu messages resent",
-                                 (unsigned)((now - sL.stats.sinceMs) / 1000), sL.stats.wakes, sL.stats.pulls,
-                                 sL.stats.framesIn, sL.stats.framesOut, sL.stats.resent);
+                                 (unsigned)((now - sL.stats.sinceMs) / 1000),
+                                 (unsigned long)sL.stats.wakes, (unsigned long)sL.stats.pulls,
+                                 (unsigned long)sL.stats.framesIn, (unsigned long)sL.stats.framesOut,
+                                 (unsigned long)sL.stats.resent);
                 memset(&sL.stats, 0, sizeof(sL.stats));
                 sL.stats.sinceMs = now;
             }
@@ -1068,17 +1580,30 @@ static void LocalThread(void *unused)
         {
             Handle handles[2];
             s32 count = 0, which = -1;
+            uint32_t wait;
+
+#ifdef LOCAL_LINK_UDP
+            /* Nothing signals the socket: the frames are read each pass, and
+             * the wait is only how long the game may keep us. In a session
+             * the look comes often; a frame that arrives waits for it. */
+            wait = (sL.inNetwork ? WAIT_MS : IDLE_MS) * 1000000LL;
+#else
             bool busy;
 
             LightLock_Lock(&sL.lock);
             busy = Unacked();
             LightLock_Unlock(&sL.lock);
+            wait = (sL.inNetwork && busy ? WAIT_MS : IDLE_MS) * 1000000LL;
+#endif
             handles[count++] = sL.wake;
+#ifndef LOCAL_LINK_UDP
             if (sL.inNetwork && sL.bind.event)
                 handles[count++] = sL.bind.event;
-            svcWaitSynchronizationN(&which, handles, count, false,
-                                    (sL.inNetwork && busy ? WAIT_MS : IDLE_MS) * 1000000LL);
+#endif
+            svcWaitSynchronizationN(&which, handles, count, false, wait);
+#ifndef LOCAL_LINK_UDP
             frameReady = which == 1;
+#endif
             sL.stats.wakes++;
         }
     }
@@ -1159,9 +1684,21 @@ void LocalLink_Shutdown(void)
     threadFree(sL.thread);
     svcCloseHandle(sL.wake);
     sL.wake = 0;
+#ifdef LOCAL_LINK_UDP
+    if (sL.radioReady)
+    {
+        close(sL.sock);
+        sL.sock = -1;
+        sL.radioReady = false;
+    }
+    if (sL.socReady)
+        socExit();
+    sL.socReady = false;
+#else
     if (sL.udsReady)
         udsExit();
     sL.udsReady = false;
+#endif
     sL.ready = false;
 }
 
@@ -1245,7 +1782,7 @@ void LocalLink_Send(uint16_t dest, const void *data, uint32_t len)
         return;
     if (len > sizeof(((struct LocalEvent *)0)->data))
     {
-        CtrLog_Write(CTR_LOG_ERROR, "local: message of %lu bytes cut", len);
+        CtrLog_Write(CTR_LOG_ERROR, "local: message of %lu bytes cut", (unsigned long)len);
         len = sizeof(((struct LocalEvent *)0)->data);
     }
     LightLock_Lock(&sL.lock);
