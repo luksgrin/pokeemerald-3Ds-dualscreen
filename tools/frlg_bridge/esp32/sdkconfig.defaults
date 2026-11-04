@@ -1,0 +1,5 @@
+# The board: an ESP32-DevKitC (WROOM-32E), 4 MB of flash.
+CONFIG_IDF_TARGET="esp32"
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+# app_main runs the bridge's whole life: reads and ticks.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=12288

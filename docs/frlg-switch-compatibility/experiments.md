@@ -288,6 +288,24 @@ builds (declarations-only UDS in `tests/local_host/3ds.h`) and runs the wire-onl
 build against the bridge (PASS). The air half of the merged build needs a real 3DS —
 that is B1.
 
+### ESP32 firmware, 3DS leg — 2026-11-04
+
+`tools/frlg_bridge/esp32/` is the board's firmware as an ESP-IDF project
+(v5.x, `idf.py set-target esp32`): `main/bridge.c` is the bridge's state
+machine as platform-free C99 — a port of `bridge.py`'s wire, byte for byte
+(beacon 52 B, go-back-N flush with a 4-frame budget, PEER_CONNECT→ACCEPT
+slot 0, PEER_DATA echo, heartbeat re-armed by its own ack, the 6 s
+silence); `main/wifi.c` is the board's softAP (`EM3DS-xxxxxx`, WPA2,
+channel 1); `main/main.c` the entry. The classic WROOM-32E on purpose: it
+has `esp_wifi_set_vendor_ie` and `esp_wifi_80211_tx` for the Switch leg.
+
+Verified before the board exists: `make verify-local-esp32bridge` compiles
+`main/bridge.c` for the host (with `test/bridge_host.c`, none of the
+board's Wi-Fi in it) and runs the game side's own host test against it —
+join, advert, PEER_* exchange, a 30-message burst, clean leave. **PASS**
+(gcc, `-Wall -Wextra -Werror` on both sides). What remains for the board:
+the softAP, and the Switch leg.
+
 ---
 
 ## Results / notes

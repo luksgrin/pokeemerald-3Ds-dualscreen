@@ -374,6 +374,14 @@ verify: verify-local-udp
 verify-local-udp:
 	"$(PYTHON)" tests/local_udp_test.py --cc "$(HOSTCC)"
 
+# The ESP32 bridge firmware's 3DS leg (tools/frlg_bridge/esp32/main/bridge.c):
+# its state machine, built for the host and run against the game side on
+# loopback — the board's firmware, tested before the board arrives.
+.PHONY: verify-local-esp32bridge
+verify: verify-local-esp32bridge
+verify-local-esp32bridge:
+	"$(PYTHON)" tests/local_esp32bridge_test.py --cc "$(HOSTCC)"
+
 .PHONY: verify-field-view
 verify-field-view: build/field_view_test$(EXESUFFIX)
 	./build/field_view_test$(EXESUFFIX)

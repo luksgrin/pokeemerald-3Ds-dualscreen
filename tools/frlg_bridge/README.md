@@ -11,13 +11,15 @@ standard LDN network the console joins to trade (the console-as-joiner
 flow is the reliable one; the Switch cannot join a hidden network the 3DS
 would host, and the 3DS cannot host LDN).
 
-Today this directory holds the 3DS-side harness only: `bridge.py` hosts a
-session a build of `3ds_port/src/3ds_local.c` with the wire in can find
-(the merged build finds it by itself once alone), and speaks the adapter's
-side of a trade. The Switch leg (a small board hosting the LDN
-network, relaying to this one) is its own program and comes later; the wire
-between the two legs is the adapter's message stream, and the board
-carries these very bytes.
+Today this directory holds the 3DS-side harness (`bridge.py`) and the
+board's firmware (`esp32/`): `bridge.py` hosts a session a build of
+`3ds_port/src/3ds_local.c` with the wire in can find (the merged build
+finds it by itself once alone), and speaks the adapter's side of a trade.
+The firmware's leg toward the 3DS is the same host in C — the state
+machine is a byte-for-byte port of `bridge.py`'s wire. The Switch leg (the
+board's LDN half, relaying to the 3DS's) is its own program and comes
+later; the wire between the two legs is the adapter's message stream, and
+the board carries these very bytes.
 
 ## The build
 
@@ -39,6 +41,13 @@ which builds `3ds_local.c` for the host (libctru doubled in
 and runs `tests/local_udp_test.c` against this bridge on loopback: the
 join, the advert, the PEER_* exchange, a burst long enough to split over
 frames, and the leave.
+
+    cd 3ds_port && make verify-local-esp32bridge PYTHON=python3
+
+is the same game against the firmware's state machine, compiled for the
+host (`esp32/main/bridge.c` with `esp32/test/bridge_host.c`, none of the
+board's Wi-Fi in it) — the board's 3DS leg, tested before the board
+arrives.
 
 ## Usage
 
@@ -105,12 +114,29 @@ again (all of them, from the oldest) 100 ms after the oldest went
 unanswered; an ack alone rides out 30 ms after a frame with nothing else
 to send. A frame carries at most 1400 bytes, a message at most 168.
 
-## The board, when it comes
+## The board: `esp32/`
 
-The ESP32-class board runs two halves: this one, toward the 3DS (a beacon,
-and the streams of one player); and an LDN half, toward the Switch — an
+The ESP32-class board (an ESP32-DevKitC, the classic WROOM-32E: it has
+`esp_wifi_set_vendor_ie` and `esp_wifi_80211_tx`, which the newer chips of
+the family lack) runs two halves: this one, toward the 3DS — a beacon, and
+the streams of one player; and an LDN half, toward the Switch — an
 advertised network the console joins at the Trade Center. Between the
 halves, the adapter's messages go as they are. What the board must make of
 the game side — the advert the Switch's game shows its leader, the
 CONNECT the console sends — is the FRLG side of the same protocol, and is
 worked out in `docs/frlg-switch-compatibility/`.
+
+The firmware is an ESP-IDF project (v5.x):
+
+    cd esp32
+    idf.py set-target esp32
+    idf.py build flash monitor
+
+On the board's network (softAP `EM3DS-xxxxxx`, WPA2, password
+`emerald3ds`, channel 1) a 3DS's search finds the session; the Switch's
+leg starts beside it once it exists. `main/bridge.c` is the state machine,
+platform-free C99 — on the board under ESP-IDF, on a development machine
+the loopback test's other end (`test/bridge_host.c`, run by
+`3ds_port/tests/local_esp32bridge_test.py`), so the 3DS leg is proven
+before any hardware is in hand. `main/wifi.c` is the board's network;
+`main/main.c` the entry.
