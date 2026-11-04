@@ -65,7 +65,8 @@ port 58325) are what its search finds there. It joins as player 2, the
 bridge hosts as player 1, and the game plays as at any counter. In the
 merged build a lone host at the counter finds the bridge by itself: it
 leaves its empty session and joins (see MergeAlone in `3ds_local.c`), so
-the bridge can come up before or after the game does.
+the bridge can come up before or after the game does. A walkthrough of
+this first run on hardware is `docs/frlg-switch-compatibility/b1a-checklist.md`.
 
 ## The wire
 
