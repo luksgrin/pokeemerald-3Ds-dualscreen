@@ -1,3 +1,15 @@
+diff --git a/data/event_scripts.s b/data/event_scripts.s
+index 4a2593c..8b963a9 100644
+--- a/data/event_scripts.s
++++ b/data/event_scripts.s
+@@ -450,6 +450,7 @@ gStdScripts_End::
+ 	.include "data/maps/TerraCave_End/scripts.inc"
+ 	.include "data/maps/AlteringCave/scripts.inc"
+ 	.include "data/maps/MeteorFalls_StevensCave/scripts.inc"
++	.include "data/maps/MeteorFalls_JirachiChamber/scripts.inc"
+ 	.include "data/scripts/shared_secret_base.inc"
+ 	.include "data/maps/BattleColosseum_2P/scripts.inc"
+ 	.include "data/maps/TradeCenter/scripts.inc"
 diff --git a/data/layouts/MeteorFalls_JirachiChamber/border.bin b/data/layouts/MeteorFalls_JirachiChamber/border.bin
 new file mode 100644
 index 0000000000000000000000000000000000000000..19d90667980ced4e6b00a744509ce6de9504511a
@@ -221,7 +233,7 @@ index 0000000..322833a
 +	.string "Its warmth has faded, but a\n"
 +	.string "peaceful feeling remains.$"
 diff --git a/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc b/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc
-index 1aa501b..71c99b5 100644
+index 1aa501b..40ddf19 100644
 --- a/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc
 +++ b/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc
 @@ -4,9 +4,14 @@ MossdeepCity_SpaceCenter_1F_MapScripts::
@@ -326,7 +338,7 @@ index 1aa501b..71c99b5 100644
 +	.string "unusual in the sky lately…\p"
 +	.string "It's unlike anything we've\n"
 +	.string "encountered before.\p"
-+	.string "STEVEN is here — he can't take\n"
++	.string "STEVEN is here. He can't take\n"
 +	.string "his eyes off that white rock\n"
 +	.string "outside.\p"
 +	.string "If you would help us, we need\n"
@@ -341,13 +353,13 @@ index 1aa501b..71c99b5 100644
 +
 +MossdeepCity_SpaceCenter_1F_Text_AskMeteoriteExamination:
 +	.string "The signal is still faint.\n"
-+	.string "METEOR FALLS first, please —\l"
++	.string "METEOR FALLS first, please.\l"
 +	.string "the rocks where the meteorites\n"
 +	.string "struck.$"
 +
 +MossdeepCity_SpaceCenter_1F_Text_AskMoonStone:
 +	.string "So the falls' rocks told their\n"
-+	.string "story. Now, a MOON STONE —\l"
++	.string "story. Now, a MOON STONE.\l"
 +	.string "LUNATONE in the falls are said\n"
 +	.string "to carry them.$"
 +
@@ -366,7 +378,7 @@ index 1aa501b..71c99b5 100644
 +	.string "Show him what we have.$"
 +
 +MossdeepCity_SpaceCenter_1F_Text_SignalMarkedDeepInFalls:
-+	.string "The signal is marked now —\n"
++	.string "The signal is marked now,\n"
 +	.string "deep inside METEOR FALLS.\p"
 +	.string "The researchers have opened the\n"
 +	.string "way for you. Go and see.$"
@@ -393,7 +405,7 @@ index 1aa501b..71c99b5 100644
 +	.string "well. But not from you, I\n"
 +	.string "think.$"
 diff --git a/data/maps/MossdeepCity_SpaceCenter_2F/scripts.inc b/data/maps/MossdeepCity_SpaceCenter_2F/scripts.inc
-index 13e6062..c3e94d9 100644
+index 13e6062..118efd9 100644
 --- a/data/maps/MossdeepCity_SpaceCenter_2F/scripts.inc
 +++ b/data/maps/MossdeepCity_SpaceCenter_2F/scripts.inc
 @@ -94,7 +94,7 @@ MossdeepCity_SpaceCenter_2F_Movement_Grunt7Defeated:
@@ -441,7 +453,7 @@ index 13e6062..c3e94d9 100644
 +
 +MossdeepCity_SpaceCenter_2F_Text_ReadingsConverged:
 +	.string "The rocks of the falls, and the\n"
-+	.string "stone — you've brought word of\n"
++	.string "stone… you've brought word of\n"
 +	.string "both?\p"
 +	.string "Then look. The readings…\n"
 +	.string "they've converged!\p"
@@ -453,7 +465,7 @@ index 13e6062..c3e94d9 100644
 +	.string "The researchers have marked the\n"
 +	.string "spot and opened the hidden way\n"
 +	.string "for you.\p"
-+	.string "Go to METEOR FALLS — the deepest\n"
++	.string "Go to METEOR FALLS, the deepest\n"
 +	.string "room of the lower falls.\p"
 +	.string "And {PLAYER}{KUN}… be careful.\n"
 +	.string "What waits there may be a wish\n"
