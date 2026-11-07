@@ -10,6 +10,15 @@ index 4a2593c..8b963a9 100644
  	.include "data/scripts/shared_secret_base.inc"
  	.include "data/maps/BattleColosseum_2P/scripts.inc"
  	.include "data/maps/TradeCenter/scripts.inc"
+diff --git a/data/layouts/MeteorFalls_B1F_2R/map.bin b/data/layouts/MeteorFalls_B1F_2R/map.bin
+index 5f4497752afc1e9f68ea2283ed88193ce11ef4a7..58ab0655376e24f908a9cfafbcb81bb21a01c7fb 100644
+GIT binary patch
+delta 12
+TcmeBS?qQx_!l<>;G@KCt7bXKt
+
+delta 12
+TcmeBS?qQx_!f3eBG@KCt7fAzC
+
 diff --git a/data/layouts/MeteorFalls_JirachiChamber/border.bin b/data/layouts/MeteorFalls_JirachiChamber/border.bin
 new file mode 100644
 index 0000000000000000000000000000000000000000..19d90667980ced4e6b00a744509ce6de9504511a
@@ -31,13 +40,14 @@ literal 0
 HcmV?d00001
 
 diff --git a/data/layouts/layouts.json b/data/layouts/layouts.json
-index b8d841f..5058992 100644
+index b8d841f..886dc9c 100644
 --- a/data/layouts/layouts.json
 +++ b/data/layouts/layouts.json
-@@ -4311,6 +4311,16 @@
-       "border_filepath": "data/layouts/MeteorFalls_StevensCave/border.bin",
-       "blockdata_filepath": "data/layouts/MeteorFalls_StevensCave/map.bin"
-     },
+@@ -4410,6 +4410,16 @@
+       "secondary_tileset": "gTileset_MysteryEventsHouse",
+       "border_filepath": "data/layouts/SootopolisCity_MysteryEventsHouse_1F_StairsUnblocked/border.bin",
+       "blockdata_filepath": "data/layouts/SootopolisCity_MysteryEventsHouse_1F_StairsUnblocked/map.bin"
++    },
 +    {
 +      "id": "LAYOUT_METEOR_FALLS_JIRACHI_CHAMBER",
 +      "name": "MeteorFalls_JirachiChamber_Layout",
@@ -47,15 +57,35 @@ index b8d841f..5058992 100644
 +      "secondary_tileset": "gTileset_MeteorFalls",
 +      "border_filepath": "data/layouts/MeteorFalls_JirachiChamber/border.bin",
 +      "blockdata_filepath": "data/layouts/MeteorFalls_JirachiChamber/map.bin"
-+    },
-     {
-       "id": "LAYOUT_LITTLEROOT_TOWN_PROFESSOR_BIRCHS_LAB_WITH_TABLE",
-       "name": "LittlerootTown_ProfessorBirchsLabWithTable_Layout",
+     }
+   ]
+ }
 diff --git a/data/maps/MeteorFalls_B1F_2R/map.json b/data/maps/MeteorFalls_B1F_2R/map.json
-index 79a8987..7a9c6a6 100644
+index 79a8987..a42d854 100644
 --- a/data/maps/MeteorFalls_B1F_2R/map.json
 +++ b/data/maps/MeteorFalls_B1F_2R/map.json
-@@ -35,8 +35,24 @@
+@@ -26,6 +26,20 @@
+       "trainer_sight_or_berry_tree_id": "0",
+       "script": "MeteorFalls_B1F_2R_EventScript_ItemTMDragonClaw",
+       "flag": "FLAG_ITEM_METEOR_FALLS_B1F_2R_TM_DRAGON_CLAW"
++    },
++    {
++      "graphics_id": "OBJ_EVENT_GFX_STEVEN",
++      "x": 6,
++      "y": 3,
++      "elevation": 3,
++      "movement_type": "MOVEMENT_TYPE_FACE_LEFT",
++      "movement_range_x": 0,
++      "movement_range_y": 0,
++      "trainer_type": "TRAINER_TYPE_NONE",
++      "trainer_sight_or_berry_tree_id": "0",
++      "script": "MeteorFalls_B1F_2R_EventScript_Steven",
++      "flag": "FLAG_HIDE_METEOR_FALLS_B1F_2R_STEVEN",
++      "local_id": "LOCALID_METEOR_FALLS_B1F_2R_STEVEN"
+     }
+   ],
+   "warp_events": [
+@@ -35,8 +49,24 @@
        "elevation": 3,
        "dest_map": "MAP_METEOR_FALLS_B1F_1R",
        "dest_warp_id": "3"
@@ -73,54 +103,162 @@ index 79a8987..7a9c6a6 100644
 +  "bg_events": [
 +    {
 +      "type": "sign",
-+      "x": 2,
-+      "y": 5,
++      "x": 4,
++      "y": 2,
 +      "elevation": 0,
 +      "player_facing_dir": "BG_EVENT_PLAYER_FACING_ANY",
-+      "script": "MeteorFalls_B1F_2R_EventScript_MeteoriteWall"
++      "script": "MeteorFalls_B1F_2R_EventScript_Marks"
 +    }
 +  ]
  }
 diff --git a/data/maps/MeteorFalls_B1F_2R/scripts.inc b/data/maps/MeteorFalls_B1F_2R/scripts.inc
-index a1d8d5b..10e2968 100644
+index a1d8d5b..ce65ea9 100644
 --- a/data/maps/MeteorFalls_B1F_2R/scripts.inc
 +++ b/data/maps/MeteorFalls_B1F_2R/scripts.inc
-@@ -1,3 +1,35 @@
+@@ -1,3 +1,143 @@
  MeteorFalls_B1F_2R_MapScripts::
 +	map_script MAP_SCRIPT_ON_LOAD, MeteorFalls_B1F_2R_OnLoad
  	.byte 0
  
 +MeteorFalls_B1F_2R_OnLoad:
-+	call_if_set FLAG_JIRACHI_RESEARCH_COMPLETE, MeteorFalls_B1F_2R_EventScript_OpenJirachiChamber
++	call_if_unset FLAG_JIRACHI_QUEST_STARTED, MeteorFalls_B1F_2R_EventScript_HideSteven
++	call_if_set FLAG_JIRACHI_DOOR_OPEN, MeteorFalls_B1F_2R_EventScript_OpenJirachiChamber
 +	end
 +
-+MeteorFalls_B1F_2R_EventScript_OpenJirachiChamber::
++MeteorFalls_B1F_2R_EventScript_HideSteven:
++	setflag FLAG_HIDE_METEOR_FALLS_B1F_2R_STEVEN
++	return
++
++MeteorFalls_B1F_2R_EventScript_OpenJirachiChamber:
 +	setmetatile 4, 1, METATILE_MeteorFalls_CaveEntrance_Top, TRUE
 +	setmetatile 3, 2, METATILE_MeteorFalls_CaveEntrance_Left, TRUE
 +	setmetatile 4, 2, METATILE_MeteorFalls_CaveEntrance_Bottom, FALSE
 +	setmetatile 5, 2, METATILE_MeteorFalls_CaveEntrance_Right, TRUE
 +	return
 +
-+MeteorFalls_B1F_2R_EventScript_MeteoriteWall::
-+	goto_if_set FLAG_JIRACHI_METEORITE_EXAMINED, MeteorFalls_B1F_2R_EventScript_MeteoriteWallAgain
++MeteorFalls_B1F_2R_EventScript_Steven::
++	lock
++	faceplayer
++	goto_if_set FLAG_DEFEATED_METEOR_FALLS_STEVEN, MeteorFalls_B1F_2R_EventScript_StevenDefeated
++	waitse
++	playse SE_PIN
++	applymovement LOCALID_METEOR_FALLS_B1F_2R_STEVEN, Common_Movement_ExclamationMark
++	waitmovement 0
++	applymovement LOCALID_METEOR_FALLS_B1F_2R_STEVEN, Common_Movement_Delay48
++	waitmovement 0
++	applymovement LOCALID_METEOR_FALLS_B1F_2R_STEVEN, Common_Movement_FacePlayer
++	waitmovement 0
++	msgbox MeteorFalls_B1F_2R_Text_StevenChallenge, MSGBOX_DEFAULT
++	trainerbattle_no_intro TRAINER_STEVEN, MeteorFalls_B1F_2R_Text_StevenDefeat
++	msgbox MeteorFalls_B1F_2R_Text_StevenPrediction, MSGBOX_DEFAULT
++	goto_if_set FLAG_JIRACHI_DOOR_OPEN, MeteorFalls_B1F_2R_EventScript_StevenFirstEnd
++	msgbox MeteorFalls_B1F_2R_Text_StevenCosmicHint, MSGBOX_DEFAULT
++MeteorFalls_B1F_2R_EventScript_StevenFirstEnd::
++	setflag FLAG_DEFEATED_METEOR_FALLS_STEVEN
++	release
++	end
++
++MeteorFalls_B1F_2R_EventScript_StevenDefeated::
++	applymovement LOCALID_METEOR_FALLS_B1F_2R_STEVEN, Common_Movement_FacePlayer
++	waitmovement 0
++	msgbox MeteorFalls_B1F_2R_Text_StevenPrediction, MSGBOX_DEFAULT
++	goto_if_set FLAG_JIRACHI_DOOR_OPEN, MeteorFalls_B1F_2R_EventScript_StevenDefeatedEnd
++	msgbox MeteorFalls_B1F_2R_Text_StevenCosmicHint, MSGBOX_DEFAULT
++MeteorFalls_B1F_2R_EventScript_StevenDefeatedEnd::
++	release
++	end
++
++MeteorFalls_B1F_2R_EventScript_Marks::
 +	lockall
-+	msgbox MeteorFalls_B1F_2R_Text_MeteoriteWall, MSGBOX_DEFAULT
-+	setflag FLAG_JIRACHI_METEORITE_EXAMINED
++	goto_if_set FLAG_JIRACHI_DOOR_OPEN, MeteorFalls_B1F_2R_EventScript_MarksOpened
++	goto_if_unset FLAG_SYS_GAME_CLEAR, MeteorFalls_B1F_2R_EventScript_MarksHint
++	specialvar VAR_RESULT, CheckJirachiCosmicAlignment
++	goto_if_eq VAR_RESULT, FALSE, MeteorFalls_B1F_2R_EventScript_MarksHint
++	msgbox MeteorFalls_B1F_2R_Text_Marks, MSGBOX_DEFAULT
++	msgbox MeteorFalls_B1F_2R_Text_MarksResolve, MSGBOX_DEFAULT
++	waitse
++	playse SE_BANG
++	call MeteorFalls_B1F_2R_EventScript_OpenJirachiChamber
++	setflag FLAG_JIRACHI_DOOR_OPEN
++	special DrawWholeMapView
++	msgbox MeteorFalls_B1F_2R_Text_DoorOpened, MSGBOX_DEFAULT
 +	releaseall
 +	end
 +
-+MeteorFalls_B1F_2R_EventScript_MeteoriteWallAgain::
-+	msgbox MeteorFalls_B1F_2R_Text_MeteoriteWallAgain, MSGBOX_SIGN
++MeteorFalls_B1F_2R_EventScript_MarksHint::
++	msgbox MeteorFalls_B1F_2R_Text_Marks, MSGBOX_DEFAULT
++	releaseall
 +	end
 +
-+MeteorFalls_B1F_2R_Text_MeteoriteWall:
-+	.string "The wall glitters where a meteorite\n"
-+	.string "bit deep into the rock, ages ago.\p"
-+	.string "Fragments glitter still… the stone\n"
-+	.string "hums, ever so faintly.$"
++MeteorFalls_B1F_2R_EventScript_MarksOpened::
++	msgbox MeteorFalls_B1F_2R_Text_MarksOpened, MSGBOX_DEFAULT
++	releaseall
++	end
 +
-+MeteorFalls_B1F_2R_Text_MeteoriteWallAgain:
-+	.string "The meteorite fragments glitter faintly.$"
++MeteorFalls_B1F_2R_Text_StevenChallenge:
++	.string "STEVEN: Oh, wow, {PLAYER}{KUN}.\n"
++	.string "I'm amazed you knew where to find me.\p"
++	.string "Do you, uh…maybe think of me as\n"
++	.string "just a rock maniac?\p"
++	.string "No, that can't be right.\p"
++	.string "We battled alongside each other at\n"
++	.string "the SOOTOPOLIS SPACE CENTER.\p"
++	.string "You should have a very good idea\n"
++	.string "about how good I am.\p"
++	.string "Okay, {PLAYER}{KUN}, if you're going to mount\n"
++	.string "a serious challenge, expect the worst!$"
++
++MeteorFalls_B1F_2R_Text_StevenDefeat:
++	.string "You…\n"
++	.string "I had no idea you'd become so strong…$"
++
++MeteorFalls_B1F_2R_Text_StevenPrediction:
++	.string "STEVEN: Come to think of it, ever since\n"
++	.string "our paths first crossed in GRANITE\l"
++	.string "CAVE in DEWFORD, I had this feeling.\p"
++	.string "I thought that you would eventually\n"
++	.string "become the CHAMPION.\p"
++	.string "My predictions usually come true.\p"
++	.string "And where will you go from here?\p"
++	.string "… … … … … …\n"
++	.string "… … … … … …\p"
++	.string "Fufufu, even I couldn't tell you that.$"
++
++MeteorFalls_B1F_2R_Text_StevenCosmicHint:
++	.string "STEVEN: Oh, yes. If you're here, then\n"
++	.string "perhaps you've heard it too.\p"
++	.string "The SPACE CENTER registers a faint\n"
++	.string "signal from deep within these falls.\p"
++	.string "I've analyzed it. It is no mere\n"
++	.string "geology. It ebbs and flows like\l"
++	.string "COSMIC POWER, the move that draws\n"
++	.string "strength from space itself.\p"
++	.string "And those marks on the wall there…\n"
++	.string "The sun, and the moon.\p"
++	.string "What a stone might wish for,\n"
++	.string "even I couldn't tell you.$"
++
++MeteorFalls_B1F_2R_Text_Marks:
++	.string "It's a bulge in the rock wall.\p"
++	.string "Ancient marks are cut deep into\n"
++	.string "the stone: a radiant circle,\l"
++	.string "followed by a crescent moon.\p"
++	.string "“The sun goes first.\n"
++	.string "The moon walks last.\l"
++	.string "Let either wield the cosmos,\n"
++	.string "and the way will open.”$"
++
++MeteorFalls_B1F_2R_Text_MarksResolve:
++	.string "The marks answer the presence of\n"
++	.string "your POKéMON with a low rumble…$"
++
++MeteorFalls_B1F_2R_Text_DoorOpened:
++	.string "The stone split open, revealing\n"
++	.string "a hidden chamber beyond!$"
++
++MeteorFalls_B1F_2R_Text_MarksOpened:
++	.string "The marks have done their part.\n"
++	.string "The way lies open.$"
 diff --git a/data/maps/MeteorFalls_JirachiChamber/map.json b/data/maps/MeteorFalls_JirachiChamber/map.json
 new file mode 100644
 index 0000000..c4a0db2
@@ -233,25 +371,10 @@ index 0000000..322833a
 +	.string "Its warmth has faded, but a\n"
 +	.string "peaceful feeling remains.$"
 diff --git a/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc b/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc
-index 1aa501b..40ddf19 100644
+index 1aa501b..291020e 100644
 --- a/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc
 +++ b/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc
-@@ -4,9 +4,14 @@ MossdeepCity_SpaceCenter_1F_MapScripts::
- 	.byte 0
- 
- MossdeepCity_SpaceCenter_1F_OnTransition:
-+	call_if_set FLAG_SYS_GAME_CLEAR, MossdeepCity_SpaceCenter_1F_EventScript_UnhideStevenPostgame
- 	goto_if_eq VAR_MOSSDEEP_CITY_STATE, 2, MossdeepCity_SpaceCenter_1F_EventScript_MoveObjectsForTeamMagma
- 	end
- 
-+MossdeepCity_SpaceCenter_1F_EventScript_UnhideStevenPostgame::
-+	clearflag FLAG_HIDE_MOSSDEEP_CITY_SPACE_CENTER_1F_STEVEN
-+	return
-+
- MossdeepCity_SpaceCenter_1F_EventScript_MoveObjectsForTeamMagma::
- 	setobjectxyperm LOCALID_SPACE_CENTER_1F_SAILOR, 1, 9
- 	setobjectmovementtype LOCALID_SPACE_CENTER_1F_SAILOR, MOVEMENT_TYPE_FACE_RIGHT
-@@ -90,10 +95,50 @@ MossdeepCity_SpaceCenter_1F_EventScript_Scientist::
+@@ -90,10 +90,18 @@ MossdeepCity_SpaceCenter_1F_EventScript_Scientist::
  	lock
  	faceplayer
  	goto_if_eq VAR_MOSSDEEP_CITY_STATE, 2, MossdeepCity_SpaceCenter_1F_EventScript_ScientistMagma
@@ -261,225 +384,37 @@ index 1aa501b..40ddf19 100644
  	end
  
 +MossdeepCity_SpaceCenter_1F_EventScript_ScientistPostgame::
-+	goto_if_set FLAG_JIRACHI_RESEARCH_COMPLETE, MossdeepCity_SpaceCenter_1F_EventScript_ScientistResearchDone
-+	goto_if_set FLAG_JIRACHI_QUEST_STARTED, MossdeepCity_SpaceCenter_1F_EventScript_ScientistStatus
 +	msgbox MossdeepCity_SpaceCenter_1F_Text_UnusualSignalBriefing, MSGBOX_DEFAULT
 +	setflag FLAG_JIRACHI_QUEST_STARTED
-+	release
-+	end
-+
-+MossdeepCity_SpaceCenter_1F_EventScript_ScientistStatus::
-+	goto_if_set FLAG_JIRACHI_MOONSTONE_SHOWN, MossdeepCity_SpaceCenter_1F_EventScript_ScientistAfterStone
-+	checkitem ITEM_MOON_STONE
-+	goto_if_eq VAR_RESULT, FALSE, MossdeepCity_SpaceCenter_1F_EventScript_ScientistAfterStone
-+	msgbox MossdeepCity_SpaceCenter_1F_Text_MoonStoneExamined, MSGBOX_DEFAULT
-+	setflag FLAG_JIRACHI_MOONSTONE_SHOWN
-+	release
-+	end
-+
-+MossdeepCity_SpaceCenter_1F_EventScript_ScientistAfterStone::
-+	goto_if_unset FLAG_JIRACHI_METEORITE_EXAMINED, MossdeepCity_SpaceCenter_1F_EventScript_ScientistAskMeteorite
-+	goto_if_unset FLAG_JIRACHI_MOONSTONE_SHOWN, MossdeepCity_SpaceCenter_1F_EventScript_ScientistAskMoonStone
-+	msgbox MossdeepCity_SpaceCenter_1F_Text_AskReadingUpstairs, MSGBOX_DEFAULT
-+	release
-+	end
-+
-+MossdeepCity_SpaceCenter_1F_EventScript_ScientistAskMeteorite::
-+	msgbox MossdeepCity_SpaceCenter_1F_Text_AskMeteoriteExamination, MSGBOX_DEFAULT
-+	release
-+	end
-+
-+MossdeepCity_SpaceCenter_1F_EventScript_ScientistAskMoonStone::
-+	msgbox MossdeepCity_SpaceCenter_1F_Text_AskMoonStone, MSGBOX_DEFAULT
-+	release
-+	end
-+
-+MossdeepCity_SpaceCenter_1F_EventScript_ScientistResearchDone::
-+	msgbox MossdeepCity_SpaceCenter_1F_Text_SignalMarkedDeepInFalls, MSGBOX_DEFAULT
++	clearflag FLAG_HIDE_METEOR_FALLS_B1F_2R_STEVEN
 +	release
 +	end
 +
  MossdeepCity_SpaceCenter_1F_EventScript_ScientistMagma::
  	msgbox MossdeepCity_SpaceCenter_1F_Text_MagmaHaveSightsOnSpaceCenter, MSGBOX_DEFAULT
  	applymovement VAR_LAST_TALKED, Common_Movement_WalkInPlaceFasterRight
-@@ -185,12 +230,25 @@ MossdeepCity_SpaceCenter_1F_EventScript_OldManMagma::
- MossdeepCity_SpaceCenter_1F_EventScript_Steven::
- 	lock
- 	faceplayer
-+	goto_if_set FLAG_SYS_GAME_CLEAR, MossdeepCity_SpaceCenter_1F_EventScript_StevenPostgame
- 	msgbox MossdeepCity_SpaceCenter_1F_Text_StevenMagmaCantBeAllowedToTakeFuel, MSGBOX_DEFAULT
- 	applymovement VAR_LAST_TALKED, Common_Movement_FaceOriginalDirection
- 	waitmovement 0
- 	release
- 	end
+@@ -327,6 +335,21 @@ MossdeepCity_SpaceCenter_1F_Text_CantStrollOnBeachWithMagma:
+ 	.string "With TEAM MAGMA around, I guess\n"
+ 	.string "strolls on the beach aren't safe.$"
  
-+MossdeepCity_SpaceCenter_1F_EventScript_StevenPostgame::
-+	goto_if_set FLAG_JIRACHI_STEVEN_HINT, MossdeepCity_SpaceCenter_1F_EventScript_StevenAfterHint
-+	msgbox MossdeepCity_SpaceCenter_1F_Text_StevenExaminesWhiteRock, MSGBOX_DEFAULT
-+	setflag FLAG_JIRACHI_STEVEN_HINT
-+	release
-+	end
-+
-+MossdeepCity_SpaceCenter_1F_EventScript_StevenAfterHint::
-+	msgbox MossdeepCity_SpaceCenter_1F_Text_StevenLooksToTheFalls, MSGBOX_DEFAULT
-+	release
-+	end
-+
- MossdeepCity_SpaceCenter_1F_EventScript_MagmaNote::
- 	lockall
- 	msgbox MossdeepCity_SpaceCenter_1F_Text_MagmaIntentToStealNotice, MSGBOX_DEFAULT
-@@ -422,3 +480,75 @@ MossdeepCity_SpaceCenter_1F_Text_MagmaIntentToStealNotice:
- 	.string "We will take the fuel no matter what.\p"
- 	.string "“Let there be more land!\n"
- 	.string "                                          TEAM MAGMA”$"
-+
 +MossdeepCity_SpaceCenter_1F_Text_UnusualSignalBriefing:
-+	.string "We've been observing something\n"
-+	.string "unusual in the sky lately…\p"
-+	.string "It's unlike anything we've\n"
-+	.string "encountered before.\p"
-+	.string "STEVEN is here. He can't take\n"
-+	.string "his eyes off that white rock\n"
-+	.string "outside.\p"
-+	.string "If you would help us, we need\n"
-+	.string "research on two fronts.\p"
-+	.string "First: METEOR FALLS. Examine the\n"
-+	.string "rocks where the meteorites bit\n"
-+	.string "deep into the wall.\p"
-+	.string "Second: a MOON STONE. LUNATONE\n"
-+	.string "in the falls are said to carry\n"
-+	.string "them.\p"
-+	.string "The sky will not wait forever.$"
++	.string "We chase space here with rockets.\n"
++	.string "But lately, the rocks are the ones\l"
++	.string "talking.\p"
++	.string "Our instruments register a faint\n"
++	.string "signal, geological in origin.\l"
++	.string "It comes from deep in METEOR FALLS.\p"
++	.string "Rocks from space, buried in rocks\n"
++	.string "of our own world…\p"
++	.string "It's beyond us. We're rocket\n"
++	.string "scientists, not rock experts.\p"
++	.string "If only we knew one we could ask!\n"
++	.string "STEVEN, perhaps? He was headed\l"
++	.string "for the falls to study the strata.$"
 +
-+MossdeepCity_SpaceCenter_1F_Text_AskMeteoriteExamination:
-+	.string "The signal is still faint.\n"
-+	.string "METEOR FALLS first, please.\l"
-+	.string "the rocks where the meteorites\n"
-+	.string "struck.$"
-+
-+MossdeepCity_SpaceCenter_1F_Text_AskMoonStone:
-+	.string "So the falls' rocks told their\n"
-+	.string "story. Now, a MOON STONE.\l"
-+	.string "LUNATONE in the falls are said\n"
-+	.string "to carry them.$"
-+
-+MossdeepCity_SpaceCenter_1F_Text_MoonStoneExamined:
-+	.string "Oh! Is that a MOON STONE?\n"
-+	.string "May I see it…?\p"
-+	.string "Yes… faint traces of the same\n"
-+	.string "signal, locked in the stone.\l"
-+	.string "Thank you. This helps.$"
-+
-+MossdeepCity_SpaceCenter_1F_Text_AskReadingUpstairs:
-+	.string "With the rocks and the stone\n"
-+	.string "agreeing…\p"
-+	.string "Please, the researcher upstairs\n"
-+	.string "tends the main monitor.\l"
-+	.string "Show him what we have.$"
-+
-+MossdeepCity_SpaceCenter_1F_Text_SignalMarkedDeepInFalls:
-+	.string "The signal is marked now,\n"
-+	.string "deep inside METEOR FALLS.\p"
-+	.string "The researchers have opened the\n"
-+	.string "way for you. Go and see.$"
-+
-+MossdeepCity_SpaceCenter_1F_Text_StevenExaminesWhiteRock:
-+	.string "STEVEN: {PLAYER}{KUN}.\p"
-+	.string "Interesting… This stone has an\n"
-+	.string "unusual composition.\p"
-+	.string "I've studied meteorites for\n"
-+	.string "years, but I've never\n"
-+	.string "encountered anything quite like\n"
-+	.string "this.\p"
-+	.string "It sits here as if it fell from\n"
-+	.string "somewhere far beyond HOENN.\p"
-+	.string "Perhaps there's something worth\n"
-+	.string "investigating in METEOR FALLS.\p"
-+	.string "If the scientists here need\n"
-+	.string "help, I would not say no.$"
-+
-+MossdeepCity_SpaceCenter_1F_Text_StevenLooksToTheFalls:
-+	.string "STEVEN: A white rock here, a\n"
-+	.string "signal in the sky…\p"
-+	.string "METEOR FALLS keeps its secrets\n"
-+	.string "well. But not from you, I\n"
-+	.string "think.$"
-diff --git a/data/maps/MossdeepCity_SpaceCenter_2F/scripts.inc b/data/maps/MossdeepCity_SpaceCenter_2F/scripts.inc
-index 13e6062..118efd9 100644
---- a/data/maps/MossdeepCity_SpaceCenter_2F/scripts.inc
-+++ b/data/maps/MossdeepCity_SpaceCenter_2F/scripts.inc
-@@ -94,7 +94,7 @@ MossdeepCity_SpaceCenter_2F_Movement_Grunt7Defeated:
- MossdeepCity_SpaceCenter_2F_EventScript_Scientist::
- 	lock
- 	faceplayer
--	goto_if_set FLAG_SYS_GAME_CLEAR, MossdeepCity_SpaceCenter_2F_EventScript_ScientistNormal
-+	goto_if_set FLAG_SYS_GAME_CLEAR, MossdeepCity_SpaceCenter_2F_EventScript_ScientistPostgame
- 	goto_if_eq VAR_MOSSDEEP_CITY_STATE, 2, MossdeepCity_SpaceCenter_2F_EventScript_ScientistMagma
- 	goto_if_lt VAR_MOSSDEEP_CITY_STATE, 2, MossdeepCity_SpaceCenter_2F_EventScript_ScientistNormal
- 	goto MossdeepCity_SpaceCenter_2F_EventScript_ScientistMagma
-@@ -105,6 +105,28 @@ MossdeepCity_SpaceCenter_2F_EventScript_ScientistNormal::
- 	release
- 	end
- 
-+MossdeepCity_SpaceCenter_2F_EventScript_ScientistPostgame::
-+	goto_if_unset FLAG_JIRACHI_QUEST_STARTED, MossdeepCity_SpaceCenter_2F_EventScript_ScientistNormal
-+	goto_if_set FLAG_JIRACHI_RESEARCH_COMPLETE, MossdeepCity_SpaceCenter_2F_EventScript_ScientistReadingDone
-+	goto_if_unset FLAG_JIRACHI_METEORITE_EXAMINED, MossdeepCity_SpaceCenter_2F_EventScript_ScientistReadingsNoise
-+	goto_if_unset FLAG_JIRACHI_MOONSTONE_SHOWN, MossdeepCity_SpaceCenter_2F_EventScript_ScientistReadingsNoise
-+	msgbox MossdeepCity_SpaceCenter_2F_Text_ReadingsConverged, MSGBOX_DEFAULT
-+	setflag FLAG_JIRACHI_READING_TAKEN
-+	setflag FLAG_JIRACHI_RESEARCH_COMPLETE
-+	msgbox MossdeepCity_SpaceCenter_2F_Text_SignalDeepInMeteorFalls, MSGBOX_DEFAULT
-+	release
-+	end
-+
-+MossdeepCity_SpaceCenter_2F_EventScript_ScientistReadingsNoise::
-+	msgbox MossdeepCity_SpaceCenter_2F_Text_ReadingsStillNoise, MSGBOX_DEFAULT
-+	release
-+	end
-+
-+MossdeepCity_SpaceCenter_2F_EventScript_ScientistReadingDone::
-+	msgbox MossdeepCity_SpaceCenter_2F_Text_ReadingDoneLine, MSGBOX_DEFAULT
-+	release
-+	end
-+
- MossdeepCity_SpaceCenter_2F_EventScript_ScientistMagma::
- 	msgbox MossdeepCity_SpaceCenter_2F_Text_WhyWouldMagmaStealRocketFuel, MSGBOX_DEFAULT
- 	release
-@@ -505,3 +527,33 @@ MossdeepCity_SpaceCenter_2F_Text_StevenThankYouComeSeeMeAtHome:
- 	.string "after this.\p"
- 	.string "Oh, yes, I don't live in RUSTBORO CITY.\n"
- 	.string "I live right here on this island.$"
-+
-+MossdeepCity_SpaceCenter_2F_Text_ReadingsConverged:
-+	.string "The rocks of the falls, and the\n"
-+	.string "stone… you've brought word of\n"
-+	.string "both?\p"
-+	.string "Then look. The readings…\n"
-+	.string "they've converged!\p"
-+	.string "A faint signal, steady as a\n"
-+	.string "heartbeat, from deep inside\n"
-+	.string "METEOR FALLS.$"
-+
-+MossdeepCity_SpaceCenter_2F_Text_SignalDeepInMeteorFalls:
-+	.string "The researchers have marked the\n"
-+	.string "spot and opened the hidden way\n"
-+	.string "for you.\p"
-+	.string "Go to METEOR FALLS, the deepest\n"
-+	.string "room of the lower falls.\p"
-+	.string "And {PLAYER}{KUN}… be careful.\n"
-+	.string "What waits there may be a wish\n"
-+	.string "that never got granted.$"
-+
-+MossdeepCity_SpaceCenter_2F_Text_ReadingsStillNoise:
-+	.string "The readings are noise until\n"
-+	.string "the rocks and the stone agree.\p"
-+	.string "The researcher downstairs will\n"
-+	.string "explain.$"
-+
-+MossdeepCity_SpaceCenter_2F_Text_ReadingDoneLine:
-+	.string "The signal is yours to follow\n"
-+	.string "now. METEOR FALLS awaits.$"
+ MossdeepCity_SpaceCenter_1F_Text_DidPokemonComeFromSpace:
+ 	.string "Some people claim that POKéMON came\n"
+ 	.string "from space. Could it be true?$"
 diff --git a/data/maps/map_groups.json b/data/maps/map_groups.json
 index 8a90679..755d86d 100644
 --- a/data/maps/map_groups.json
@@ -494,28 +429,42 @@ index 8a90679..755d86d 100644
    ],
    "gMapGroup_IndoorDynamic": [
      "SecretBase_RedCave1",
+diff --git a/data/specials.inc b/data/specials.inc
+index 6f6f3b4..e82357e 100644
+--- a/data/specials.inc
++++ b/data/specials.inc
+@@ -543,3 +543,4 @@ gSpecials:
+ 	def_special LocalSession_Wait
+ 	def_special LocalSession_CanEnter
+ 	def_special LocalSession_Leave
++	def_special CheckJirachiCosmicAlignment
 diff --git a/include/constants/flags.h b/include/constants/flags.h
-index 7b5c5ed..3a082f3 100644
+index 7b5c5ed..ff28439 100644
 --- a/include/constants/flags.h
 +++ b/include/constants/flags.h
-@@ -745,6 +745,17 @@
+@@ -745,6 +745,13 @@
  #define FLAG_UNUSED_0x2BA  0x2BA // Unused Flag
  #define FLAG_UNUSED_0x2BB  0x2BB // Unused Flag
  
 +// The postgame legendary events' own flags (the Jirachi track first), over
 +// the unused block above.
 +#define FLAG_JIRACHI_QUEST_STARTED          FLAG_UNUSED_0x264
-+#define FLAG_JIRACHI_STEVEN_HINT            FLAG_UNUSED_0x26B
-+#define FLAG_JIRACHI_METEORITE_EXAMINED     FLAG_UNUSED_0x265
-+#define FLAG_JIRACHI_MOONSTONE_SHOWN        FLAG_UNUSED_0x266
-+#define FLAG_JIRACHI_READING_TAKEN          FLAG_UNUSED_0x267
-+#define FLAG_JIRACHI_RESEARCH_COMPLETE      FLAG_UNUSED_0x268
 +#define FLAG_CAUGHT_JIRACHI                 FLAG_UNUSED_0x269
 +#define FLAG_DEFEATED_JIRACHI               FLAG_UNUSED_0x26A
++#define FLAG_JIRACHI_DOOR_OPEN              FLAG_UNUSED_0x26B
 +
  // Event Flags
  #define FLAG_HIDE_ROUTE_101_BIRCH_STARTERS_BAG                      0x2BC
  #define FLAG_HIDE_APPRENTICE                                        0x2BD
+@@ -776,7 +783,7 @@
+ #define FLAG_HIDE_MOSSDEEP_CITY_STEVENS_HOUSE_INVISIBLE_NINJA_BOY   0x2D7
+ #define FLAG_HIDE_PETALBURG_CITY_WALLYS_MOM                         0x2D8
+ 
+-#define FLAG_UNUSED_0x2D9                                           0x2D9 // Unused Flag
++#define FLAG_HIDE_METEOR_FALLS_B1F_2R_STEVEN                        0x2D9
+ 
+ #define FLAG_HIDE_LILYCOVE_FAN_CLUB_INTERVIEWER                     0x2DA
+ #define FLAG_HIDE_RUSTBORO_CITY_AQUA_GRUNT                          0x2DB
 diff --git a/src/battle_setup.c b/src/battle_setup.c
 index d54b078..4e94219 100644
 --- a/src/battle_setup.c
@@ -530,3 +479,30 @@ index d54b078..4e94219 100644
      }
  
      IncrementGameStat(GAME_STAT_TOTAL_BATTLES);
+diff --git a/src/field_specials.c b/src/field_specials.c
+index 91e4b6a..a2bbe53 100644
+--- a/src/field_specials.c
++++ b/src/field_specials.c
+@@ -4276,3 +4276,22 @@ u8 Script_TryGainNewFanFromCounter(void)
+ {
+     return TryGainNewFanFromCounter(gSpecialVar_0x8004);
+ }
++
++// TRUE when the party is arranged for the Jirachi chamber: SOLROCK leads,
++// LUNATONE is sixth, and either knows COSMIC POWER.
++u8 CheckJirachiCosmicAlignment(void)
++{
++    u32 i;
++    if (GetMonData(&gPlayerParty[0], MON_DATA_SPECIES) != SPECIES_SOLROCK)
++        return FALSE;
++    if (GetMonData(&gPlayerParty[PARTY_SIZE - 1], MON_DATA_SPECIES) != SPECIES_LUNATONE)
++        return FALSE;
++    for (i = 0; i < MAX_MON_MOVES; i++)
++    {
++        if (GetMonData(&gPlayerParty[0], MON_DATA_MOVE1 + i) == MOVE_COSMIC_POWER)
++            return TRUE;
++        if (GetMonData(&gPlayerParty[PARTY_SIZE - 1], MON_DATA_MOVE1 + i) == MOVE_COSMIC_POWER)
++            return TRUE;
++    }
++    return FALSE;
++}
