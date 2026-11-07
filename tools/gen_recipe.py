@@ -815,11 +815,13 @@ def main() -> None:
     if args.gba_elf:
         syms = vtree_manifest.gba_symbols(args.nm, args.gba_elf)
         out.vtree = vtree_manifest.metadata(args.decomp, syms)
-        missing = [m["folder"] for m in out.vtree["maps"] if m["rom"] is None]
-        missing += [l["id"] for l in out.vtree["layouts"] if "name" in l and l["rom"] is None]
+        # Entries without a ROM symbol must carry their own data (added
+        # layouts need width/height/tilesets; added maps need their events).
+        missing = [m["folder"] for m in out.vtree["maps"] if "rom" not in m and "layout" not in m]
+        missing += [l["id"] for l in out.vtree["layouts"] if "name" in l and "rom" not in l
+                    and "width" not in l]
         if missing:
-            raise SystemExit("gen_recipe: no ROM symbol for %s" % missing[:5])
-        lit_before = len(cover.literals)
+            raise SystemExit("gen_recipe: no ROM symbol or inline data for %s" % missing[:5])
         for rel in vtree_manifest.binary_inputs(args.decomp):
             data = (args.decomp / rel).read_bytes()
             crc = zlib.crc32(data) & 0xFFFFFFFF
@@ -833,13 +835,11 @@ def main() -> None:
                 if off >= 0 and rcp.lz77_decompress(rom, off) == data:
                     ops = [["Z", off]]
             if ops is None:
+                # Data no retail ROM has (an added layout's blockdata): it
+                # ships among the recipe's literals, like the pack entries of
+                # added content do.
                 ops, patches, stats = cover.run(data, None)
-            if stats["literal"]:
-                raise SystemExit("gen_recipe: voxel input %s is not in the ROM (%d literal bytes)"
-                                 % (rel, stats["literal"]))
             out.inputs.append({"path": rel, "size": len(data), "crc": crc, "ops": ops})
-        if len(cover.literals) != lit_before:
-            raise SystemExit("gen_recipe: voxel inputs must not need literals")
         print("gen_recipe: %d voxel generator inputs, %d maps, %d layouts"
               % (len(out.inputs), len(out.vtree["maps"]), len(out.vtree["layouts"])))
     out.literals = bytes(cover.literals)

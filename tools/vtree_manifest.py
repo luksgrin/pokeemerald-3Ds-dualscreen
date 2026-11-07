@@ -76,6 +76,19 @@ def binary_inputs(root: Path) -> list[str]:
     return ordered
 
 
+def new_map_metadata(root: Path, mj: dict) -> dict:
+    """The generator-facing view of an added map, from its own map.json (the
+    same shape read_map writes for the ROM's maps)."""
+    warps = []
+    for w in mj.get("warp_events") or []:
+        warps.append({"x": w["x"], "y": w["y"], "elevation": w["elevation"],
+                      "dest_map": w["dest_map"], "dest_warp_id": int(w["dest_warp_id"])})
+    signs = [{"type": "sign", "x": b["x"], "y": b["y"], "elevation": b["elevation"]}
+             for b in mj.get("bg_events") or [] if b.get("type") == "sign"]
+    return {"layout": mj["layout"], "map_type": mj["map_type"], "warp_events": warps,
+            "bg_events": signs, "connections": []}
+
+
 def metadata(root: Path, syms: dict[str, int]) -> dict:
     meta: dict = {}
     text = (root / "src/data/tilesets/metatiles.h").read_text(encoding="utf-8")
@@ -93,15 +106,33 @@ def metadata(root: Path, syms: dict[str, int]) -> dict:
         item = {"id": entry["id"]}
         if "name" in entry:
             item.update(name=entry["name"], blockdata_filepath=entry["blockdata_filepath"],
-                        border_filepath=entry["border_filepath"], rom=syms.get(entry["name"]))
+                        border_filepath=entry["border_filepath"])
+            rom = syms.get(entry["name"])
+            if rom is not None:
+                item["rom"] = rom
+            else:
+                # A layout no retail ROM has (added content): the builders
+                # cannot read it from the ROM, so the recipe carries what the
+                # generators need (the blockdata ships among the inputs).
+                item.update(width=entry["width"], height=entry["height"],
+                            primary_tileset=entry["primary_tileset"],
+                            secondary_tileset=entry["secondary_tileset"])
         meta["layouts"].append(item)
     groups = json.loads((root / "data/maps/map_groups.json").read_text(encoding="utf-8"))
     meta["maps"] = []
     for g, group in enumerate(groups["group_order"]):
         for n, folder in enumerate(groups[group]):
             mj = json.loads((root / "data/maps" / folder / "map.json").read_text(encoding="utf-8"))
-            meta["maps"].append({"folder": folder, "id": mj["id"], "name": mj["name"],
-                                 "group": g, "num": n, "rom": syms.get(mj["name"])})
+            item = {"folder": folder, "id": mj["id"], "name": mj["name"],
+                    "group": g, "num": n}
+            rom = syms.get(mj["name"])
+            if rom is not None:
+                item["rom"] = rom
+            else:
+                # An added map: carry its generator-facing events from this
+                # tree (the same shape read_map writes from the ROM).
+                item.update(new_map_metadata(root, mj))
+            meta["maps"].append(item)
     types = (root / "include/constants/map_types.h").read_text(encoding="utf-8")
     meta["map_types"] = {int(v): k for k, v in re.findall(r"#define\s+(MAP_TYPE_\w+)\s+(\d+)", types)}
     meta["connection_directions"] = CONNECTION_DIRECTIONS

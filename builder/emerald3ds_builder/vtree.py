@@ -110,7 +110,13 @@ def build_tree(rom: bytes, recipe: Recipe, root: Path, progress=None) -> None:
             layouts.append({"id": item["id"]})
             continue
         entry = {"id": item["id"], "name": item["name"]}
-        entry.update(read_layout(rom, item["rom"], tilesets))
+        if item.get("rom") is not None:
+            entry.update(read_layout(rom, item["rom"], tilesets))
+        else:
+            # An added layout: the recipe carries what the ROM can't.
+            entry.update(width=item["width"], height=item["height"],
+                         primary_tileset=item["primary_tileset"],
+                         secondary_tileset=item["secondary_tileset"])
         entry["border_filepath"] = item["border_filepath"]
         entry["blockdata_filepath"] = item["blockdata_filepath"]
         layouts.append(entry)
@@ -121,7 +127,11 @@ def build_tree(rom: bytes, recipe: Recipe, root: Path, progress=None) -> None:
 
     for item in meta["maps"]:
         record = {"id": item["id"], "name": item["name"]}
-        record.update(read_map(rom, item["rom"], meta))
+        if item.get("rom") is not None:
+            record.update(read_map(rom, item["rom"], meta))
+        else:
+            record.update({k: item[k] for k in ("layout", "map_type", "warp_events", "bg_events",
+                                                "connections")})
         path = root / "data" / "maps" / item["folder"] / "map.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(record, indent=2), encoding="utf-8")
