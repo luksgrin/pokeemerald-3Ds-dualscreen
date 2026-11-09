@@ -1,0 +1,233 @@
+diff --git a/data/event_scripts.s b/data/event_scripts.s
+index 8b963a942a13fa6a090aec277c277484dd11f60a..ed3b628298fc1b3095c731e9cea96bcf4fe39ebd 100644
+--- a/data/event_scripts.s
++++ b/data/event_scripts.s
+@@ -451,6 +451,7 @@ gStdScripts_End::
+ 	.include "data/maps/AlteringCave/scripts.inc"
+ 	.include "data/maps/MeteorFalls_StevensCave/scripts.inc"
+ 	.include "data/maps/MeteorFalls_JirachiChamber/scripts.inc"
++	.include "data/maps/AbandonedShip_ExpeditionHold/scripts.inc"
+ 	.include "data/scripts/shared_secret_base.inc"
+ 	.include "data/maps/BattleColosseum_2P/scripts.inc"
+ 	.include "data/maps/TradeCenter/scripts.inc"
+new file mode 100644
+diff --git a/data/layouts/AbandonedShip_ExpeditionHold/border.bin b/data/layouts/AbandonedShip_ExpeditionHold/border.bin
+new file mode 100644
+--- /dev/null
++++ b/data/layouts/AbandonedShip_ExpeditionHold/border.bin
+index 0000000000000000000000000000000000000000..19d90667980ced4e6b00a744509ce6de9504511a
+GIT binary patch
+literal 8
+LcmZQ%Vgy3~06YK<
+
+literal 0
+HcmV?d00001
+
+new file mode 100644
+diff --git a/data/layouts/AbandonedShip_ExpeditionHold/map.bin b/data/layouts/AbandonedShip_ExpeditionHold/map.bin
+new file mode 100644
+--- /dev/null
++++ b/data/layouts/AbandonedShip_ExpeditionHold/map.bin
+index 0000000000000000000000000000000000000000..3546915b26ce4996d7c36da94d84925760b4d31c
+GIT binary patch
+literal 560
+zcmXprQYQkM8`&A@69Mgk>a2{c2||!M3nC!0x<sQyoH|g|;Wimr9d1<?M)XyO@EOcr
+Wga~$5!qj1xMTk<SP8%b<?Tr9&M|27R
+
+literal 0
+HcmV?d00001
+
+diff --git a/data/layouts/AbandonedShip_HiddenFloorCorridors/map.bin b/data/layouts/AbandonedShip_HiddenFloorCorridors/map.bin
+index a4637ccbedce3e9ea5dfd860e70d419bfeeb5f05..56e1129b918f9c340cb3f03fc4ef75dbb5f388ae 100644
+GIT binary patch
+delta 38
+hcmbQoG>>UQn~aH>AsaF@Vq-C4GGYc|W3!2iY5<j72Y~<p
+
+delta 38
+gcmbQoG>>UQn~VXQAqq5NV=-bfVg_OZwuy^s0FH478UO$Q
+
+diff --git a/data/layouts/layouts.json b/data/layouts/layouts.json
+index 886dc9c47dd00c0ccfe5b0c3a719875ecab1ce65..96fcd6c79f285f358da8a730f6c2e5811e06d69c 100644
+--- a/data/layouts/layouts.json
++++ b/data/layouts/layouts.json
+@@ -4420,6 +4420,16 @@
+       "secondary_tileset": "gTileset_MeteorFalls",
+       "border_filepath": "data/layouts/MeteorFalls_JirachiChamber/border.bin",
+       "blockdata_filepath": "data/layouts/MeteorFalls_JirachiChamber/map.bin"
++    },
++    {
++      "id": "LAYOUT_ABANDONED_SHIP_EXPEDITION_HOLD",
++      "name": "AbandonedShip_ExpeditionHold_Layout",
++      "width": 20,
++      "height": 14,
++      "primary_tileset": "gTileset_General",
++      "secondary_tileset": "gTileset_InsideShip",
++      "border_filepath": "data/layouts/AbandonedShip_ExpeditionHold/border.bin",
++      "blockdata_filepath": "data/layouts/AbandonedShip_ExpeditionHold/map.bin"
+     }
+   ]
+ }
+diff --git a/data/maps/AbandonedShip_ExpeditionHold/map.json b/data/maps/AbandonedShip_ExpeditionHold/map.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..498005ca3392c35d3c358147a009bd9082444e2c
+--- /dev/null
++++ b/data/maps/AbandonedShip_ExpeditionHold/map.json
+@@ -0,0 +1,51 @@
++{
++  "id": "MAP_ABANDONED_SHIP_EXPEDITION_HOLD",
++  "name": "AbandonedShip_ExpeditionHold",
++  "layout": "LAYOUT_ABANDONED_SHIP_EXPEDITION_HOLD",
++  "music": "MUS_ABANDONED_SHIP",
++  "region_map_section": "MAPSEC_ABANDONED_SHIP",
++  "requires_flash": false,
++  "weather": "WEATHER_SHADE",
++  "map_type": "MAP_TYPE_UNDERGROUND",
++  "allow_cycling": true,
++  "allow_escaping": true,
++  "allow_running": true,
++  "show_map_name": true,
++  "battle_scene": "MAP_BATTLE_SCENE_NORMAL",
++  "connections": null,
++  "object_events": [
++    {
++      "graphics_id": "OBJ_EVENT_GFX_ITEM_BALL",
++      "x": 14,
++      "y": 5,
++      "elevation": 3,
++      "movement_type": "MOVEMENT_TYPE_LOOK_AROUND",
++      "movement_range_x": 0,
++      "movement_range_y": 0,
++      "trainer_type": "TRAINER_TYPE_NONE",
++      "trainer_sight_or_berry_tree_id": "0",
++      "script": "AbandonedShip_ExpeditionHold_EventScript_ItemOldSeaMap",
++      "flag": "FLAG_ITEM_EXPEDITION_HOLD_OLD_SEA_MAP"
++    }
++  ],
++  "warp_events": [
++    {
++      "x": 10,
++      "y": 13,
++      "elevation": 3,
++      "dest_map": "MAP_ABANDONED_SHIP_HIDDEN_FLOOR_CORRIDORS",
++      "dest_warp_id": "6"
++    }
++  ],
++  "coord_events": [],
++  "bg_events": [
++    {
++      "type": "sign",
++      "x": 3,
++      "y": 2,
++      "elevation": 0,
++      "player_facing_dir": "BG_EVENT_PLAYER_FACING_ANY",
++      "script": "AbandonedShip_ExpeditionHold_EventScript_Diary"
++    }
++  ]
++}
+diff --git a/data/maps/AbandonedShip_ExpeditionHold/scripts.inc b/data/maps/AbandonedShip_ExpeditionHold/scripts.inc
+new file mode 100644
+index 0000000000000000000000000000000000000000..1dd38261c97fba1d9142e20e338ef00dd0de6b34
+--- /dev/null
++++ b/data/maps/AbandonedShip_ExpeditionHold/scripts.inc
+@@ -0,0 +1,25 @@
++AbandonedShip_ExpeditionHold_MapScripts::
++	.byte 0
++
++AbandonedShip_ExpeditionHold_EventScript_Diary::
++	lockall
++	msgbox AbandonedShip_ExpeditionHold_Text_Diary, MSGBOX_DEFAULT
++	releaseall
++	end
++
++AbandonedShip_ExpeditionHold_Text_Diary:
++	.string "…The final entry in the expedition's\n"
++	.string "logbook. The hand grows unsteady.\p"
++	.string "“At long last we sighted it. An\n"
++	.string "island that appears on no ordinary\l"
++	.string "map. Our charts refuse to hold its\l"
++	.string "shape.”\p"
++	.string "“Each night, strange sounds drift\n"
++	.string "from the forest. Songs unlike any\l"
++	.string "POKéMON we know. We never once saw\l"
++	.string "what sang them.”\p"
++	.string "“The OLD SEA MAP alone shows the\l"
++	.string "way. If the finder of this diary\l"
++	.string "follows it… go gently.\p"
++	.string "The island was singing long before\l"
++	.string "we came.”$"
+diff --git a/data/maps/AbandonedShip_HiddenFloorCorridors/map.json b/data/maps/AbandonedShip_HiddenFloorCorridors/map.json
+index 245e68b8db7c35ecc008536b23bb0cbf28300a08..6f396dcc61de817a679d5441dc8a504e5e3428e2 100644
+--- a/data/maps/AbandonedShip_HiddenFloorCorridors/map.json
++++ b/data/maps/AbandonedShip_HiddenFloorCorridors/map.json
+@@ -56,6 +56,13 @@
+       "elevation": 3,
+       "dest_map": "MAP_ABANDONED_SHIP_HIDDEN_FLOOR_ROOMS",
+       "dest_warp_id": "8"
++    },
++    {
++      "x": 2,
++      "y": 6,
++      "elevation": 3,
++      "dest_map": "MAP_ABANDONED_SHIP_EXPEDITION_HOLD",
++      "dest_warp_id": "0"
+     }
+   ],
+   "coord_events": [],
+diff --git a/data/maps/AbandonedShip_HiddenFloorCorridors/scripts.inc b/data/maps/AbandonedShip_HiddenFloorCorridors/scripts.inc
+index dade6a516e86bb45dc368350a0659c8ff8dc2953..8f2a4b181950daf030443876f749c9fc9bcd53e3 100644
+--- a/data/maps/AbandonedShip_HiddenFloorCorridors/scripts.inc
++++ b/data/maps/AbandonedShip_HiddenFloorCorridors/scripts.inc
+@@ -16,8 +16,14 @@ AbandonedShip_HiddenFloorCorridors_OnLoad:
+ 	call_if_set FLAG_USED_ROOM_2_KEY, AbandonedShip_HiddenFloorCorridors_EventScript_UnlockRoom2
+ 	call_if_set FLAG_USED_ROOM_4_KEY, AbandonedShip_HiddenFloorCorridors_EventScript_UnlockRoom4
+ 	call_if_set FLAG_USED_ROOM_6_KEY, AbandonedShip_HiddenFloorCorridors_EventScript_UnlockRoom6
++	call_if_set FLAG_SYS_GAME_CLEAR, AbandonedShip_HiddenFloorCorridors_EventScript_OpenExpeditionHold
+ 	end
+ 
++AbandonedShip_HiddenFloorCorridors_EventScript_OpenExpeditionHold::
++	setmetatile 2, 5, METATILE_InsideShip_DoorIndent_Unlocked, TRUE
++	setmetatile 2, 6, METATILE_InsideShip_IntactDoor_Bottom_Unlocked, FALSE
++	return
++
+ AbandonedShip_HiddenFloorCorridors_EventScript_UnlockRoom1::
+ 	setmetatile 3, 8, METATILE_InsideShip_IntactDoor_Bottom_Unlocked, TRUE
+ 	return
+diff --git a/data/maps/map_groups.json b/data/maps/map_groups.json
+index 755d86d584df1b9d231dadbf784651e74eb6be03..b388c21ef843dcb739e6b24c00ef5360c2e4a9be 100644
+--- a/data/maps/map_groups.json
++++ b/data/maps/map_groups.json
+@@ -430,7 +430,8 @@
+     "TerraCave_End",
+     "AlteringCave",
+     "MeteorFalls_StevensCave",
+-    "MeteorFalls_JirachiChamber"
++    "MeteorFalls_JirachiChamber",
++    "AbandonedShip_ExpeditionHold"
+   ],
+   "gMapGroup_IndoorDynamic": [
+     "SecretBase_RedCave1",
+diff --git a/data/scripts/item_ball_scripts.inc b/data/scripts/item_ball_scripts.inc
+index 9b5a2eead3505366c9b2562c621ef258427eaba4..23a69241e5b0abd92d2ae49d143f9045e91aba62 100644
+--- a/data/scripts/item_ball_scripts.inc
++++ b/data/scripts/item_ball_scripts.inc
+@@ -657,3 +657,7 @@ MagmaHideout_4F_EventScript_ItemMaxRevive::
+ MagmaHideout_3F_3R_EventScript_ItemEscapeRope::
+ 	finditem ITEM_ESCAPE_ROPE
+ 	end
++
++AbandonedShip_ExpeditionHold_EventScript_ItemOldSeaMap::
++	finditem ITEM_OLD_SEA_MAP
++	end
+diff --git a/include/constants/flags.h b/include/constants/flags.h
+index 040fb681d1ad473a197dd13a95a9ccb07be6d114..bd72e44f88347b810766b47946d0403693a46d49 100644
+--- a/include/constants/flags.h
++++ b/include/constants/flags.h
+@@ -754,6 +754,8 @@
+ 
+ // The tracks that follow it.
+ #define FLAG_AURORA_TICKET_GIVEN            FLAG_UNUSED_0x265 // Deoxys
++#define FLAG_OLD_SEA_MAP_RECOGNIZED         FLAG_UNUSED_0x268 // Mew
++#define FLAG_ITEM_EXPEDITION_HOLD_OLD_SEA_MAP FLAG_UNUSED_0x26F
+ 
+ // Event Flags
+ #define FLAG_HIDE_ROUTE_101_BIRCH_STARTERS_BAG                      0x2BC

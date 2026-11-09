@@ -1,0 +1,481 @@
+diff --git a/data/event_scripts.s b/data/event_scripts.s
+index ed3b628298fc1b3095c731e9cea96bcf4fe39ebd..2475798b697302000ca5e8a04f6ca2e05f38a927 100644
+--- a/data/event_scripts.s
++++ b/data/event_scripts.s
+@@ -452,6 +452,7 @@ gStdScripts_End::
+ 	.include "data/maps/MeteorFalls_StevensCave/scripts.inc"
+ 	.include "data/maps/MeteorFalls_JirachiChamber/scripts.inc"
+ 	.include "data/maps/AbandonedShip_ExpeditionHold/scripts.inc"
++	.include "data/maps/VictoryRoad_CelebiShrine/scripts.inc"
+ 	.include "data/scripts/shared_secret_base.inc"
+ 	.include "data/maps/BattleColosseum_2P/scripts.inc"
+ 	.include "data/maps/TradeCenter/scripts.inc"
+diff --git a/data/layouts/VictoryRoad_B1F/map.bin b/data/layouts/VictoryRoad_B1F/map.bin
+index c1ea2f657d43c4f1275684536cbfdedef1a0ab7d..4c43b72a82d592dc4b1809aa59a46a68fe6ec398 100644
+GIT binary patch
+delta 18
+ZcmZ1?wnS`$6c>}R(c}Uyxye>suK+Ym1)Kl?
+
+delta 15
+WcmZ1?wnS`$6xZYuE``ZfT(1Br!38@2
+
+new file mode 100644
+diff --git a/data/layouts/VictoryRoad_CelebiShrine/border.bin b/data/layouts/VictoryRoad_CelebiShrine/border.bin
+new file mode 100644
+--- /dev/null
++++ b/data/layouts/VictoryRoad_CelebiShrine/border.bin
+index 0000000000000000000000000000000000000000..423a0732e6b195d4841067cb731f545ad67f1685
+GIT binary patch
+literal 8
+LcmWe+5(Gm40ek>W
+
+literal 0
+HcmV?d00001
+
+new file mode 100644
+diff --git a/data/layouts/VictoryRoad_CelebiShrine/map.bin b/data/layouts/VictoryRoad_CelebiShrine/map.bin
+new file mode 100644
+--- /dev/null
++++ b/data/layouts/VictoryRoad_CelebiShrine/map.bin
+index 0000000000000000000000000000000000000000..8598c54cef41b967f08c81bf628cb74328c50671
+GIT binary patch
+literal 336
+zcmd;N<HQ3QjnJW~8At@A2O$$-9AS*$p~{(>L3BXm5pq#*9WWL`4q+CIg)9eA57UM2
+c7MKon`%uL}JY+M`WeLfF<YCYlY!ZwI0P;f}&j0`b
+
+literal 0
+HcmV?d00001
+
+diff --git a/data/layouts/layouts.json b/data/layouts/layouts.json
+index 96fcd6c79f285f358da8a730f6c2e5811e06d69c..3666955018663736a3717d0296fec6b4b46fe86f 100644
+--- a/data/layouts/layouts.json
++++ b/data/layouts/layouts.json
+@@ -4430,6 +4430,16 @@
+       "secondary_tileset": "gTileset_InsideShip",
+       "border_filepath": "data/layouts/AbandonedShip_ExpeditionHold/border.bin",
+       "blockdata_filepath": "data/layouts/AbandonedShip_ExpeditionHold/map.bin"
++    },
++    {
++      "id": "LAYOUT_VICTORY_ROAD_CELEBI_SHRINE",
++      "name": "VictoryRoad_CelebiShrine_Layout",
++      "width": 14,
++      "height": 12,
++      "primary_tileset": "gTileset_General",
++      "secondary_tileset": "gTileset_Cave",
++      "border_filepath": "data/layouts/VictoryRoad_CelebiShrine/border.bin",
++      "blockdata_filepath": "data/layouts/VictoryRoad_CelebiShrine/map.bin"
+     }
+   ]
+ }
+diff --git a/data/maps/EverGrandeCity/map.json b/data/maps/EverGrandeCity/map.json
+index 58978b7ff8eebc038088804f543faa7b993ee87c..a26db243e7b3272d1d82b74a7798e24297d91f70 100644
+--- a/data/maps/EverGrandeCity/map.json
++++ b/data/maps/EverGrandeCity/map.json
+@@ -19,7 +19,22 @@
+       "direction": "left"
+     }
+   ],
+-  "object_events": [],
++  "object_events": [
++    {
++      "graphics_id": "OBJ_EVENT_GFX_OLD_WOMAN",
++      "x": 20,
++      "y": 7,
++      "elevation": 3,
++      "movement_type": "MOVEMENT_TYPE_FACE_DOWN",
++      "movement_range_x": 0,
++      "movement_range_y": 0,
++      "trainer_type": "TRAINER_TYPE_NONE",
++      "trainer_sight_or_berry_tree_id": "0",
++      "script": "EverGrandeCity_EventScript_Grandmother",
++      "flag": "0",
++      "local_id": "LOCALID_EVER_GRANDE_CITY_GRANDMOTHER"
++    }
++  ],
+   "warp_events": [
+     {
+       "x": 18,
+diff --git a/data/maps/EverGrandeCity/scripts.inc b/data/maps/EverGrandeCity/scripts.inc
+index de1ad9189d8c7af547584fd28d1fcba32a73a6a5..69e65db7965904307019108a143a4c3978630899 100644
+--- a/data/maps/EverGrandeCity/scripts.inc
++++ b/data/maps/EverGrandeCity/scripts.inc
+@@ -35,3 +35,33 @@ EverGrandeCity_Text_CitySign:
+ 	.string "“The paradise of flowers, the sea,\n"
+ 	.string "and POKéMON.”$"
+ 
++EverGrandeCity_EventScript_Grandmother::
++	lock
++	faceplayer
++	goto_if_set FLAG_CELEBI_SHRINE_RESTORED, EverGrandeCity_EventScript_GrandmotherShrineBloomed
++	msgbox EverGrandeCity_Text_GrandmotherShrineStory, MSGBOX_DEFAULT
++	release
++	end
++
++EverGrandeCity_EventScript_GrandmotherShrineBloomed::
++	msgbox EverGrandeCity_Text_GrandmotherShrineBloomed, MSGBOX_DEFAULT
++	release
++	end
++
++EverGrandeCity_Text_GrandmotherShrineStory:
++	.string "When I was little, my grandmother\n"
++	.string "told me about a sacred shrine hidden\l"
++	.string "deep within these mountains…\p"
++	.string "They say it was once surrounded by\n"
++	.string "beautiful flowers, but a terrible\l"
++	.string "fire destroyed it.\p"
++	.string "I wonder if it still exists…\p"
++	.string "They say the scent of flowers once\n"
++	.string "brought life back to the forest…$"
++
++EverGrandeCity_Text_GrandmotherShrineBloomed:
++	.string "So it was true…\p"
++	.string "The old shrine has bloomed again.\p"
++	.string "Perhaps the guardian of the forest\n"
++	.string "has finally returned.$"
++
+diff --git a/data/maps/VictoryRoad_B1F/map.json b/data/maps/VictoryRoad_B1F/map.json
+index c6033354ced7b14ad0ef92fff40a342077d93f36..b53ef52d13cdd2d370d7d3e09b597b73706595c6 100644
+--- a/data/maps/VictoryRoad_B1F/map.json
++++ b/data/maps/VictoryRoad_B1F/map.json
+@@ -337,6 +337,13 @@
+       "elevation": 3,
+       "dest_map": "MAP_VICTORY_ROAD_B2F",
+       "dest_warp_id": "3"
++    },
++    {
++      "x": 5,
++      "y": 28,
++      "elevation": 3,
++      "dest_map": "MAP_VICTORY_ROAD_CELEBI_SHRINE",
++      "dest_warp_id": "0"
+     }
+   ],
+   "coord_events": [],
+diff --git a/data/maps/VictoryRoad_B1F/scripts.inc b/data/maps/VictoryRoad_B1F/scripts.inc
+index b8ec6993535134a1d19c0f8bedff4aac2f5a623f..0e377306d6fcd6089930a3ceaa87ffddc20bac79 100644
+--- a/data/maps/VictoryRoad_B1F/scripts.inc
++++ b/data/maps/VictoryRoad_B1F/scripts.inc
+@@ -1,6 +1,15 @@
+ VictoryRoad_B1F_MapScripts::
++	map_script MAP_SCRIPT_ON_LOAD, VictoryRoad_B1F_OnLoad
+ 	.byte 0
+ 
++VictoryRoad_B1F_OnLoad:
++	call_if_unset FLAG_SYS_GAME_CLEAR, VictoryRoad_B1F_EventScript_CoverShrineDoor
++	end
++
++VictoryRoad_B1F_EventScript_CoverShrineDoor::
++	setmetatile 5, 28, METATILE_Cave_EntranceCover, TRUE
++	return
++
+ VictoryRoad_B1F_EventScript_Samuel::
+ 	trainerbattle_single TRAINER_SAMUEL, VictoryRoad_B1F_Text_SamuelIntro, VictoryRoad_B1F_Text_SamuelDefeat
+ 	msgbox VictoryRoad_B1F_Text_SamuelPostBattle, MSGBOX_AUTOCLOSE
+diff --git a/data/maps/VictoryRoad_CelebiShrine/map.json b/data/maps/VictoryRoad_CelebiShrine/map.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..61f5397e79abc817be94c47268cfee164a11cef2
+--- /dev/null
++++ b/data/maps/VictoryRoad_CelebiShrine/map.json
+@@ -0,0 +1,53 @@
++{
++  "id": "MAP_VICTORY_ROAD_CELEBI_SHRINE",
++  "name": "VictoryRoad_CelebiShrine",
++  "layout": "LAYOUT_VICTORY_ROAD_CELEBI_SHRINE",
++  "music": "MUS_MT_PYRE",
++  "region_map_section": "MAPSEC_VICTORY_ROAD",
++  "requires_flash": false,
++  "weather": "WEATHER_NONE",
++  "map_type": "MAP_TYPE_UNDERGROUND",
++  "allow_cycling": false,
++  "allow_escaping": true,
++  "allow_running": true,
++  "show_map_name": true,
++  "battle_scene": "MAP_BATTLE_SCENE_NORMAL",
++  "connections": null,
++  "object_events": [],
++  "warp_events": [
++    {
++      "x": 7,
++      "y": 11,
++      "elevation": 3,
++      "dest_map": "MAP_VICTORY_ROAD_B1F",
++      "dest_warp_id": "7"
++    }
++  ],
++  "coord_events": [],
++  "bg_events": [
++    {
++      "type": "sign",
++      "x": 6,
++      "y": 3,
++      "elevation": 0,
++      "player_facing_dir": "BG_EVENT_PLAYER_FACING_ANY",
++      "script": "VictoryRoad_CelebiShrine_EventScript_CelebiAltar"
++    },
++    {
++      "type": "sign",
++      "x": 7,
++      "y": 3,
++      "elevation": 0,
++      "player_facing_dir": "BG_EVENT_PLAYER_FACING_ANY",
++      "script": "VictoryRoad_CelebiShrine_EventScript_CelebiAltar"
++    },
++    {
++      "type": "sign",
++      "x": 10,
++      "y": 1,
++      "elevation": 0,
++      "player_facing_dir": "BG_EVENT_PLAYER_FACING_ANY",
++      "script": "VictoryRoad_CelebiShrine_EventScript_CelebiInscription"
++    }
++  ]
++}
+diff --git a/data/maps/VictoryRoad_CelebiShrine/scripts.inc b/data/maps/VictoryRoad_CelebiShrine/scripts.inc
+new file mode 100644
+index 0000000000000000000000000000000000000000..496e1a1009c8ae9ded6635b19eeeab6b5c849cf6
+--- /dev/null
++++ b/data/maps/VictoryRoad_CelebiShrine/scripts.inc
+@@ -0,0 +1,142 @@
++VictoryRoad_CelebiShrine_MapScripts::
++	map_script MAP_SCRIPT_ON_LOAD, VictoryRoad_CelebiShrine_OnLoad
++	.byte 0
++
++VictoryRoad_CelebiShrine_OnLoad:
++	call_if_set FLAG_CELEBI_SHRINE_RESTORED, VictoryRoad_CelebiShrine_EventScript_ApplyRestoredTiles
++	end
++
++VictoryRoad_CelebiShrine_EventScript_ApplyRestoredTiles::
++	setmetatile 6, 2, METATILE_Cave_ShoalCave_BlueStone_Large, FALSE
++	setmetatile 7, 2, METATILE_Cave_ShoalCave_BlueStone_Large, FALSE
++	setmetatile 4, 4, METATILE_Cave_ShoalCave_BlueStone_Small, FALSE
++	setmetatile 9, 4, METATILE_Cave_ShoalCave_BlueStone_Small, FALSE
++	setmetatile 5, 6, METATILE_Cave_ShoalCave_BlueStone_Small, FALSE
++	setmetatile 8, 6, METATILE_Cave_ShoalCave_BlueStone_Small, FALSE
++	return
++
++VictoryRoad_CelebiShrine_EventScript_CelebiAltar::
++	lockall
++	goto_if_set FLAG_CAUGHT_CELEBI, VictoryRoad_CelebiShrine_EventScript_ShrineAtPeace
++	goto_if_unset FLAG_CELEBI_SHRINE_RESTORED, VictoryRoad_CelebiShrine_EventScript_AltarDamaged
++	msgbox VictoryRoad_CelebiShrine_Text_GentleBreeze, MSGBOX_DEFAULT
++	msgbox VictoryRoad_CelebiShrine_Text_SomethingApproaches, MSGBOX_DEFAULT
++	waitse
++	playmoncry SPECIES_CELEBI, CRY_MODE_ENCOUNTER
++	delay 40
++	waitmoncry
++	seteventmon SPECIES_CELEBI, 40
++	setflag FLAG_SYS_CTRL_OBJ_DELETE
++	special BattleSetup_StartLegendaryBattle
++	waitstate
++	clearflag FLAG_SYS_CTRL_OBJ_DELETE
++	specialvar VAR_RESULT, GetBattleOutcome
++	goto_if_eq VAR_RESULT, B_OUTCOME_WON, VictoryRoad_CelebiShrine_EventScript_CelebiDefeated
++	goto_if_eq VAR_RESULT, B_OUTCOME_RAN, VictoryRoad_CelebiShrine_EventScript_CelebiVanished
++	goto_if_eq VAR_RESULT, B_OUTCOME_PLAYER_TELEPORTED, VictoryRoad_CelebiShrine_EventScript_CelebiVanished
++	goto_if_eq VAR_RESULT, B_OUTCOME_MON_TELEPORTED, VictoryRoad_CelebiShrine_EventScript_CelebiVanished
++	setflag FLAG_CAUGHT_CELEBI
++	msgbox VictoryRoad_CelebiShrine_Text_CelebiCaught, MSGBOX_DEFAULT
++	releaseall
++	end
++
++VictoryRoad_CelebiShrine_EventScript_CelebiDefeated::
++	setflag FLAG_DEFEATED_CELEBI
++	msgbox VictoryRoad_CelebiShrine_Text_CelebiVanished, MSGBOX_DEFAULT
++	releaseall
++	end
++
++VictoryRoad_CelebiShrine_EventScript_CelebiVanished::
++	msgbox VictoryRoad_CelebiShrine_Text_CelebiVanished, MSGBOX_DEFAULT
++	releaseall
++	end
++
++VictoryRoad_CelebiShrine_EventScript_AltarDamaged::
++	msgbox VictoryRoad_CelebiShrine_Text_AltarDamaged, MSGBOX_DEFAULT
++	releaseall
++	end
++
++VictoryRoad_CelebiShrine_EventScript_ShrineAtPeace::
++	msgbox VictoryRoad_CelebiShrine_Text_ShrineAtPeace, MSGBOX_DEFAULT
++	releaseall
++	end
++
++VictoryRoad_CelebiShrine_EventScript_CelebiInscription::
++	lockall
++	goto_if_unset FLAG_CELEBI_SHRINE_RESTORED, VictoryRoad_CelebiShrine_EventScript_InscriptionOld
++	msgbox VictoryRoad_CelebiShrine_Text_InscriptionRestored, MSGBOX_DEFAULT
++	releaseall
++	end
++
++VictoryRoad_CelebiShrine_EventScript_InscriptionOld::
++	msgbox VictoryRoad_CelebiShrine_Text_InscriptionOld, MSGBOX_DEFAULT
++	releaseall
++	end
++
++VictoryRoad_CelebiShrine_EventScript_CelebiShrineRestore::
++	lockall
++	msgbox VictoryRoad_CelebiShrine_Text_JirachiReacting, MSGBOX_DEFAULT
++	playse SE_M_HEAL_BELL
++	setmetatile 6, 2, METATILE_Cave_ShoalCave_BlueStone_Large, FALSE
++	setmetatile 7, 2, METATILE_Cave_ShoalCave_BlueStone_Large, FALSE
++	setmetatile 4, 4, METATILE_Cave_ShoalCave_BlueStone_Small, FALSE
++	setmetatile 9, 4, METATILE_Cave_ShoalCave_BlueStone_Small, FALSE
++	setmetatile 5, 6, METATILE_Cave_ShoalCave_BlueStone_Small, FALSE
++	setmetatile 8, 6, METATILE_Cave_ShoalCave_BlueStone_Small, FALSE
++	special DrawWholeMapView
++	msgbox VictoryRoad_CelebiShrine_Text_ShrineRestored, MSGBOX_DEFAULT
++	setflag FLAG_CELEBI_SHRINE_RESTORED
++	releaseall
++	end
++
++VictoryRoad_CelebiShrine_Text_AltarDamaged:
++	.string "An ancient shrine…\p"
++	.string "The altar is badly damaged.\n"
++	.string "The surrounding flowers have\l"
++	.string "withered.$"
++
++VictoryRoad_CelebiShrine_Text_GentleBreeze:
++	.string "A gentle breeze passes through the\n"
++	.string "shrine…$"
++
++VictoryRoad_CelebiShrine_Text_SomethingApproaches:
++	.string "Something is approaching…$"
++
++VictoryRoad_CelebiShrine_Text_CelebiCaught:
++	.string "The little POKéMON nodded once, as\n"
++	.string "if in thanks, and returned to the\l"
++	.string "shrine's care.$"
++
++VictoryRoad_CelebiShrine_Text_CelebiVanished:
++	.string "The guardian of the forest vanished\n"
++	.string "into the shrine…$"
++
++VictoryRoad_CelebiShrine_Text_ShrineAtPeace:
++	.string "The shrine is whole, and at peace.\n"
++	.string "Flowers bloom around the altar.$"
++
++VictoryRoad_CelebiShrine_Text_InscriptionOld:
++	.string "Carvings crawl across the stone,\n"
++	.string "scorched nearly smooth.\p"
++	.string "“…REST THE WOODS…\n"
++	.string "…RETURN THE SCENT OF FLOWERS…”\p"
++	.string "The rest is lost to the fire.$"
++
++VictoryRoad_CelebiShrine_Text_InscriptionRestored:
++	.string "The carvings seem to deepen as you\n"
++	.string "trace them…\p"
++	.string "“SWEETNESS WAKES THE WOODS.\n"
++	.string "A WISH KEPT NEAR REKINDLES WHAT\l"
++	.string "THE FIRE TOOK.”\p"
++	.string "The flowers have returned the\n"
++	.string "stone's voice.$"
++
++VictoryRoad_CelebiShrine_Text_JirachiReacting:
++	.string "JIRACHI is reacting to the shrine!\p"
++	.string "A mysterious energy fills the\n"
++	.string "air…$"
++
++VictoryRoad_CelebiShrine_Text_ShrineRestored:
++	.string "The burnt altar begins to glow…\p"
++	.string "Flowers bloom around the shrine!\p"
++	.string "The shrine has been restored!$"
+diff --git a/data/maps/map_groups.json b/data/maps/map_groups.json
+index b388c21ef843dcb739e6b24c00ef5360c2e4a9be..c7f2064827c5063f20033ce0e5f04f5b9d691d64 100644
+--- a/data/maps/map_groups.json
++++ b/data/maps/map_groups.json
+@@ -431,7 +431,8 @@
+     "AlteringCave",
+     "MeteorFalls_StevensCave",
+     "MeteorFalls_JirachiChamber",
+-    "AbandonedShip_ExpeditionHold"
++    "AbandonedShip_ExpeditionHold",
++    "VictoryRoad_CelebiShrine"
+   ],
+   "gMapGroup_IndoorDynamic": [
+     "SecretBase_RedCave1",
+diff --git a/include/constants/flags.h b/include/constants/flags.h
+index 85745a6d0d3bd49a6ba752c55faaea489eceb795..962db1b1a4f2f6a2192aa1074881f4b3b8406202 100644
+--- a/include/constants/flags.h
++++ b/include/constants/flags.h
+@@ -757,6 +757,9 @@
+ #define FLAG_EON_TICKET_GIVEN               FLAG_UNUSED_0x266 // Latias/Latios
+ #define FLAG_MYSTIC_TICKET_GIVEN            FLAG_UNUSED_0x267 // Lugia/Ho-Oh
+ #define FLAG_OLD_SEA_MAP_RECOGNIZED         FLAG_UNUSED_0x268 // Mew
++#define FLAG_CELEBI_SHRINE_RESTORED         FLAG_UNUSED_0x26C // Celebi
++#define FLAG_CAUGHT_CELEBI                  FLAG_UNUSED_0x26D
++#define FLAG_DEFEATED_CELEBI                FLAG_UNUSED_0x26E
+ #define FLAG_ITEM_EXPEDITION_HOLD_OLD_SEA_MAP FLAG_UNUSED_0x26F
+ #define FLAG_MT_PYRE_INSCRIPTION_READ       FLAG_UNUSED_0x270
+ 
+diff --git a/include/event_scripts.h b/include/event_scripts.h
+index 4e0a88f82ac1d09c4721ffb6834253674e9eca68..16a70eb7009bf20a10175c180804ecea8b35355a 100644
+--- a/include/event_scripts.h
++++ b/include/event_scripts.h
+@@ -374,6 +374,8 @@ extern const u8 SecretBase_Text_Trainer9Defeated[];
+ //field effects
+ extern const u8 EventScript_UseStrength[];
+ extern const u8 EventScript_FailSweetScent[];
++/* the shrine restore path is the map script with its map prefix */
++extern const u8 VictoryRoad_CelebiShrine_EventScript_CelebiShrineRestore[];
+ extern const u8 EventScript_UseFlash[];
+ extern const u8 EventScript_UseCut[];
+ extern const u8 EventScript_UseRockSmash[];
+diff --git a/src/fldeff_sweetscent.c b/src/fldeff_sweetscent.c
+index 51a4519f6a3eaad6e6b037d08d6dcef85a5b0655..b96bc2b2cc9a64158ef42e85162a3c2d0b2f8478 100644
+--- a/src/fldeff_sweetscent.c
++++ b/src/fldeff_sweetscent.c
+@@ -9,19 +9,43 @@
+ #include "mirage_tower.h"
+ #include "palette.h"
+ #include "party_menu.h"
++#include "pokemon.h"
+ #include "script.h"
+ #include "sound.h"
+ #include "sprite.h"
+ #include "task.h"
+ #include "wild_encounter.h"
+ #include "constants/field_effects.h"
++#include "constants/flags.h"
++#include "constants/maps.h"
+ #include "constants/rgb.h"
+ #include "constants/songs.h"
++#include "constants/species.h"
+ 
+ static void FieldCallback_SweetScent(void);
+ static void StartSweetScentFieldEffect(void);
+ static void TrySweetScentEncounter(u8 taskId);
+ static void FailSweetScentEncounter(u8 taskId);
++static bool8 ShouldTriggerCelebiShrineRestore(void);
++
++// The forgotten shrine past Victory Road: with JIRACHI in the party, using
++// SWEET SCENT there restores the shrine instead of failing to find POKéMON.
++static bool8 ShouldTriggerCelebiShrineRestore(void)
++{
++    u32 i;
++
++    if (gSaveBlock1Ptr->location.mapGroup != MAP_GROUP(MAP_VICTORY_ROAD_CELEBI_SHRINE)
++        || gSaveBlock1Ptr->location.mapNum != MAP_NUM(MAP_VICTORY_ROAD_CELEBI_SHRINE))
++        return FALSE;
++    if (FlagGet(FLAG_CELEBI_SHRINE_RESTORED) == TRUE)
++        return FALSE;
++    for (i = 0; i < PARTY_SIZE; i++)
++    {
++        if (GetMonData(&gPlayerParty[i], MON_DATA_SPECIES, 0) == SPECIES_JIRACHI)
++            return TRUE;
++    }
++    return FALSE;
++}
+ 
+ bool8 SetUpFieldMove_SweetScent(void)
+ {
+@@ -93,7 +117,10 @@ static void FailSweetScentEncounter(u8 taskId)
+     {
+         CpuFastCopy(gPaletteDecompressionBuffer, gPlttBufferUnfaded, PLTT_BUFFER_ALLOC_BYTES);
+         SetWeatherPalStateIdle();
+-        ScriptContext_SetupScript(EventScript_FailSweetScent);
++        if (ShouldTriggerCelebiShrineRestore() == TRUE)
++            ScriptContext_SetupScript(VictoryRoad_CelebiShrine_EventScript_CelebiShrineRestore);
++        else
++            ScriptContext_SetupScript(EventScript_FailSweetScent);
+         DestroyTask(taskId);
+     }
+ }

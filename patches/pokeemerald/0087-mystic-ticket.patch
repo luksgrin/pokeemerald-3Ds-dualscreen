@@ -1,0 +1,247 @@
+diff --git a/data/maps/LilycoveCity_Harbor/map.json b/data/maps/LilycoveCity_Harbor/map.json
+index 671e6edd7400428f58d532a5819505da1e585aad..b946a9137c21a58e739eac360400f6ec3c79b696 100644
+--- a/data/maps/LilycoveCity_Harbor/map.json
++++ b/data/maps/LilycoveCity_Harbor/map.json
+@@ -82,6 +82,20 @@
+       "trainer_sight_or_berry_tree_id": "0",
+       "script": "0x0",
+       "flag": "FLAG_HIDE_LILYCOVE_HARBOR_EVENT_TICKET_TAKER"
++    },
++    {
++      "graphics_id": "OBJ_EVENT_GFX_SAILOR",
++      "x": 1,
++      "y": 13,
++      "elevation": 3,
++      "movement_type": "MOVEMENT_TYPE_FACE_RIGHT",
++      "movement_range_x": 0,
++      "movement_range_y": 0,
++      "trainer_type": "TRAINER_TYPE_NONE",
++      "trainer_sight_or_berry_tree_id": "0",
++      "script": "LilycoveCity_Harbor_EventScript_OldSalt",
++      "flag": "0",
++      "local_id": "LOCALID_LILYCOVE_HARBOR_OLD_SALT"
+     }
+   ],
+   "warp_events": [
+diff --git a/data/maps/LilycoveCity_Harbor/scripts.inc b/data/maps/LilycoveCity_Harbor/scripts.inc
+index 965e01b3716c3919a2a399b86b0a55217a6a6371..ea860a899bdaa3bea17c6fe09950b941b8e60d00 100644
+--- a/data/maps/LilycoveCity_Harbor/scripts.inc
++++ b/data/maps/LilycoveCity_Harbor/scripts.inc
+@@ -585,3 +585,92 @@ LilycoveCity_Harbor_Text_SailorFerryAvailable:
+ 	.string "The folks at the SHIPYARD in SLATEPORT\n"
+ 	.string "must've worked extra hard.\p"
+ 	.string "Well, it's my turn to get busy now!$"
++
++LilycoveCity_Harbor_EventScript_OldSalt::
++	lock
++	faceplayer
++	goto_if_set FLAG_SYS_GAME_CLEAR, LilycoveCity_Harbor_EventScript_OldSaltPostgame
++	msgbox LilycoveCity_Harbor_Text_OldSaltVanilla, MSGBOX_DEFAULT
++	release
++	end
++
++LilycoveCity_Harbor_EventScript_OldSaltPostgame::
++	checkitem ITEM_OLD_SEA_MAP
++	goto_if_eq VAR_RESULT, TRUE, LilycoveCity_Harbor_EventScript_OldSaltRecognizeMap
++	goto_if_unset FLAG_MT_PYRE_INSCRIPTION_READ, LilycoveCity_Harbor_EventScript_OldSaltNotYet
++	goto_if_set FLAG_MYSTIC_TICKET_GIVEN, LilycoveCity_Harbor_EventScript_OldSaltIdle
++	msgbox LilycoveCity_Harbor_Text_OldSaltLegend, MSGBOX_DEFAULT
++	msgbox LilycoveCity_Harbor_Text_OldSaltRecord, MSGBOX_DEFAULT
++	giveitem ITEM_MYSTIC_TICKET
++	goto_if_eq VAR_RESULT, FALSE, Common_EventScript_ShowBagIsFull
++	setflag FLAG_ENABLE_SHIP_NAVEL_ROCK
++	setflag FLAG_MYSTIC_TICKET_GIVEN
++	release
++	end
++
++LilycoveCity_Harbor_EventScript_OldSaltRecognizeMap::
++	goto_if_set FLAG_OLD_SEA_MAP_RECOGNIZED, LilycoveCity_Harbor_EventScript_OldSaltIdle
++	msgbox LilycoveCity_Harbor_Text_OldSaltRecognizesMap, MSGBOX_DEFAULT
++	setflag FLAG_ENABLE_SHIP_FARAWAY_ISLAND
++	setflag FLAG_OLD_SEA_MAP_RECOGNIZED
++	release
++	end
++
++LilycoveCity_Harbor_EventScript_OldSaltNotYet::
++	msgbox LilycoveCity_Harbor_Text_OldSaltNotYet, MSGBOX_DEFAULT
++	release
++	end
++
++LilycoveCity_Harbor_EventScript_OldSaltIdle::
++	msgbox LilycoveCity_Harbor_Text_OldSaltIdle, MSGBOX_DEFAULT
++	release
++	end
++
++LilycoveCity_Harbor_Text_OldSaltVanilla:
++	.string "Yo. Tide's strong today.\p"
++	.string "The S.S. TIDAL doesn't mind a little\n"
++	.string "chop, though.$"
++
++LilycoveCity_Harbor_Text_OldSaltLegend:
++	.string "An old salt like me doesn't put much\n"
++	.string "stock in legends, but the records…\p"
++	.string "The maritime records tell of a sacred\n"
++	.string "isle, far past the westerly currents.\l"
++	.string "Guarded since before charts were drawn.\p"
++	.string "And now an old woman on MT. PYRE\n"
++	.string "is telling people the guardians have\l"
++	.string "chosen someone.\p"
++	.string "You read the stone on that summit,\n"
++	.string "didn't you? I knew it the moment I\l"
++	.string "saw you.\p"
++	.string "Here. The MYSTIC TICKET. My captain's\n"
++	.string "days are done, but the ferry will\l"
++	.string "honor it.$"
++
++LilycoveCity_Harbor_Text_OldSaltRecord:
++	.string "Show it at the counter there. They'll\n"
++	.string "take you straight to NAVEL ROCK --\l"
++	.string "the isle where the sky and the sea\n"
++	.string "keep their watchers.$"
++
++LilycoveCity_Harbor_Text_OldSaltRecognizesMap:
++	.string "Well, blow me down. That's an OLD\n"
++	.string "SEA MAP -- a route the ferry lines\l"
++	.string "stopped sailing generations ago.\p"
++	.string "The attendants at the counter will\n"
++	.string "honor it. A friend of mine, old\n"
++	.string "BRINEY… he'll want to see this, too.$"
++
++LilycoveCity_Harbor_Text_OldSaltNotYet:
++	.string "These waters keep their secrets.\n"
++	.string "The old records speak of a sacred\l"
++	.string "isle, but they only open up to those\l"
++	.string "who've stood where the guardians are\l"
++	.string "honored.\p"
++	.string "…MT. PYRE, maybe. Its summit sees\n"
++	.string "all of HOENN.$"
++
++LilycoveCity_Harbor_Text_OldSaltIdle:
++	.string "The sea's patient. It'll show you\n"
++	.string "what it means to, when it's time.$"
++
+diff --git a/data/maps/MtPyre_Summit/map.json b/data/maps/MtPyre_Summit/map.json
+index 7a2cccdd36816efc86029c3f7c84352d3e66e072..8d7a074935460b873f414e2eb4cd3b0a6dc66629 100644
+--- a/data/maps/MtPyre_Summit/map.json
++++ b/data/maps/MtPyre_Summit/map.json
+@@ -221,6 +221,14 @@
+       "elevation": 3,
+       "item": "ITEM_RARE_CANDY",
+       "flag": "FLAG_HIDDEN_ITEM_MT_PYRE_SUMMIT_RARE_CANDY"
++    },
++    {
++      "type": "sign",
++      "x": 28,
++      "y": 4,
++      "elevation": 0,
++      "player_facing_dir": "BG_EVENT_PLAYER_FACING_ANY",
++      "script": "MtPyre_Summit_EventScript_Inscription"
+     }
+   ]
+ }
+diff --git a/data/maps/MtPyre_Summit/scripts.inc b/data/maps/MtPyre_Summit/scripts.inc
+index b3e331ccbb7c0adba2fb052afe038338b7482246..7fcebabd632ddcec2b9749b745fa62195b02ace8 100644
+--- a/data/maps/MtPyre_Summit/scripts.inc
++++ b/data/maps/MtPyre_Summit/scripts.inc
+@@ -173,10 +173,36 @@ MtPyre_Summit_EventScript_OldLadyLegendariesAwake::
+ 	end
+ 
+ MtPyre_Summit_EventScript_OldLadyAfterOrbsReturned::
++	goto_if_set FLAG_SYS_GAME_CLEAR, MtPyre_Summit_EventScript_OldLadyAncientGuardians
+ 	msgbox MtPyre_Summit_Text_SuperAncientPokemonTaughtUs, MSGBOX_DEFAULT
+ 	release
+ 	end
+ 
++MtPyre_Summit_EventScript_OldLadyAncientGuardians::
++	goto_if_set FLAG_MYSTIC_TICKET_GIVEN, MtPyre_Summit_EventScript_OldLadyGuardiansReminder
++	msgbox MtPyre_Summit_Text_GuardiansLegend, MSGBOX_DEFAULT
++	msgbox MtPyre_Summit_Text_GuardiansInscription, MSGBOX_DEFAULT
++	release
++	end
++
++MtPyre_Summit_EventScript_OldLadyGuardiansReminder::
++	msgbox MtPyre_Summit_Text_GuardiansReminder, MSGBOX_DEFAULT
++	release
++	end
++
++MtPyre_Summit_EventScript_Inscription::
++	lockall
++	goto_if_unset FLAG_SYS_GAME_CLEAR, MtPyre_Summit_EventScript_InscriptionWorn
++	setflag FLAG_MT_PYRE_INSCRIPTION_READ
++	msgbox MtPyre_Summit_Text_InscriptionAncient, MSGBOX_DEFAULT
++	releaseall
++	end
++
++MtPyre_Summit_EventScript_InscriptionWorn::
++	msgbox MtPyre_Summit_Text_InscriptionWorn, MSGBOX_DEFAULT
++	releaseall
++	end
++
+ MtPyre_Summit_EventScript_ArchieMaxieTrigger0::
+ 	lockall
+ 	setvar VAR_0x8008, 0
+@@ -559,6 +585,49 @@ MtPyre_Summit_Text_WillYouHearOutMyTale:
+ 	.string "Will you hear out my tale? A tale long\n"
+ 	.string "told in the HOENN region?$"
+ 
++MtPyre_Summit_Text_GuardiansLegend:
++	.string "These two orbs have protected HOENN\n"
++	.string "for generations…\p"
++	.string "But there are older legends, from\n"
++	.string "before even these two treasures were\l"
++	.string "known.\p"
++	.string "Two guardians, they say. One watches\n"
++	.string "over the skies. One watches over the\l"
++	.string "oceans.\p"
++	.string "Where the land, the sea, and the sky\n"
++	.string "meet, the old people kept their\l"
++	.string "vigil.$"
++
++MtPyre_Summit_Text_GuardiansInscription:
++	.string "There is an old stone here on the\n"
++	.string "summit. You walked past it, I think.\p"
++	.string "Read it now, with the orbs returned\n"
++	.string "to their place. Perhaps it will read\l"
++	.string "you back.$"
++
++MtPyre_Summit_Text_GuardiansReminder:
++	.string "The old stone waits on this summit,\n"
++	.string "and the guardians wait beyond the\l"
++	.string "sea.\p"
++	.string "An old sailor in LILYCOVE keeps the\n"
++	.string "maritime records. Show him what you\l"
++	.string "have read here.$"
++
++MtPyre_Summit_Text_InscriptionWorn:
++	.string "It's an ancient stone slab.\n"
++	.string "Its carvings have been worn smooth\l"
++	.string "by wind and rain.$"
++
++MtPyre_Summit_Text_InscriptionAncient:
++	.string "The carvings seem to deepen as you\n"
++	.string "trace them…\p"
++	.string "“WHEN THE SKY AND THE SEA ARE\n"
++	.string "HELD IN BALANCE, THE PATH TO THE\l"
++	.string "SACRED ISLE SHALL OPEN.”\p"
++	.string "Two shapes are carved below: one\n"
++	.string "winged and radiant, one long and\n"
++	.string "coiled like the current.$"
++
+ MtPyre_Summit_Text_GroudonKyogreTale:
+ 	.string "It happened long, long ago…\p"
+ 	.string "The world was wracked by a ferocious\n"
+diff --git a/include/constants/flags.h b/include/constants/flags.h
+index 5e3f7e4bd04c400abf0beef6f0b705c36f81ee90..85745a6d0d3bd49a6ba752c55faaea489eceb795 100644
+--- a/include/constants/flags.h
++++ b/include/constants/flags.h
+@@ -755,8 +755,10 @@
+ // The tracks that follow it.
+ #define FLAG_AURORA_TICKET_GIVEN            FLAG_UNUSED_0x265 // Deoxys
+ #define FLAG_EON_TICKET_GIVEN               FLAG_UNUSED_0x266 // Latias/Latios
++#define FLAG_MYSTIC_TICKET_GIVEN            FLAG_UNUSED_0x267 // Lugia/Ho-Oh
+ #define FLAG_OLD_SEA_MAP_RECOGNIZED         FLAG_UNUSED_0x268 // Mew
+ #define FLAG_ITEM_EXPEDITION_HOLD_OLD_SEA_MAP FLAG_UNUSED_0x26F
++#define FLAG_MT_PYRE_INSCRIPTION_READ       FLAG_UNUSED_0x270
+ 
+ // Event Flags
+ #define FLAG_HIDE_ROUTE_101_BIRCH_STARTERS_BAG                      0x2BC

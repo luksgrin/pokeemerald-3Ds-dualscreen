@@ -1,0 +1,130 @@
+diff --git a/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc b/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc
+index 291020e389022507cdb6ff136dd17f1577d14182..0bfd39f889ed7d1a5a1a440999a589474de9fe52 100644
+--- a/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc
++++ b/data/maps/MossdeepCity_SpaceCenter_1F/scripts.inc
+@@ -96,12 +96,37 @@ MossdeepCity_SpaceCenter_1F_EventScript_Scientist::
+ 	end
+ 
+ MossdeepCity_SpaceCenter_1F_EventScript_ScientistPostgame::
++	goto_if_set FLAG_CAUGHT_JIRACHI, MossdeepCity_SpaceCenter_1F_EventScript_ScientistDeoxysSignal
+ 	msgbox MossdeepCity_SpaceCenter_1F_Text_UnusualSignalBriefing, MSGBOX_DEFAULT
+ 	setflag FLAG_JIRACHI_QUEST_STARTED
+ 	clearflag FLAG_HIDE_METEOR_FALLS_B1F_2R_STEVEN
+ 	release
+ 	end
+ 
++MossdeepCity_SpaceCenter_1F_EventScript_ScientistDeoxysSignal::
++	goto_if_set FLAG_AURORA_TICKET_GIVEN, MossdeepCity_SpaceCenter_1F_EventScript_ScientistDeoxysReminder
++	setvar VAR_0x8004, SPECIES_JIRACHI
++	specialvar VAR_RESULT, CheckSpeciesInParty
++	goto_if_eq VAR_RESULT, FALSE, MossdeepCity_SpaceCenter_1F_EventScript_ScientistBringJirachi
++	msgbox MossdeepCity_SpaceCenter_1F_Text_JirachiResonance, MSGBOX_DEFAULT
++	msgbox MossdeepCity_SpaceCenter_1F_Text_SecondSignal, MSGBOX_DEFAULT
++	giveitem ITEM_AURORA_TICKET
++	goto_if_eq VAR_RESULT, FALSE, Common_EventScript_ShowBagIsFull
++	setflag FLAG_ENABLE_SHIP_BIRTH_ISLAND
++	setflag FLAG_AURORA_TICKET_GIVEN
++	release
++	end
++
++MossdeepCity_SpaceCenter_1F_EventScript_ScientistBringJirachi::
++	msgbox MossdeepCity_SpaceCenter_1F_Text_BringJirachi, MSGBOX_DEFAULT
++	release
++	end
++
++MossdeepCity_SpaceCenter_1F_EventScript_ScientistDeoxysReminder::
++	msgbox MossdeepCity_SpaceCenter_1F_Text_SecondSignalReminder, MSGBOX_DEFAULT
++	release
++	end
++
+ MossdeepCity_SpaceCenter_1F_EventScript_ScientistMagma::
+ 	msgbox MossdeepCity_SpaceCenter_1F_Text_MagmaHaveSightsOnSpaceCenter, MSGBOX_DEFAULT
+ 	applymovement VAR_LAST_TALKED, Common_Movement_WalkInPlaceFasterRight
+@@ -350,6 +375,43 @@ MossdeepCity_SpaceCenter_1F_Text_UnusualSignalBriefing:
+ 	.string "STEVEN, perhaps? He was headed\l"
+ 	.string "for the falls to study the strata.$"
+ 
++MossdeepCity_SpaceCenter_1F_Text_JirachiResonance:
++	.string "You… you've caught it!\n"
++	.string "The POKéMON from the falls!\p"
++	.string "Look -- the instruments! The moment\n"
++	.string "JIRACHI entered the room, the signal\l"
++	.string "spiked.\p"
++	.string "JIRACHI is a wish made of space.\n"
++	.string "Of course it would hear another\l"
++	.string "voice from the void.$"
++
++MossdeepCity_SpaceCenter_1F_Text_SecondSignal:
++	.string "There is a second signal. Far\n"
++	.string "stronger than the first.\p"
++	.string "It does not come from METEOR\n"
++	.string "FALLS. It comes from the sea --\l"
++	.string "from an island that appears on no\l"
++	.string "chart we hold.\p"
++	.string "Take this AURORA TICKET. The ferry\n"
++	.string "at LILYCOVE HARBOR honors it.\p"
++	.string "Whatever sent that signal… it is\n"
++	.string "waiting to be found.$"
++
++MossdeepCity_SpaceCenter_1F_Text_BringJirachi:
++	.string "The signal answers JIRACHI, and\n"
++	.string "JIRACHI answers the signal.\p"
++	.string "You've caught it, haven't you?\n"
++	.string "Bring it here. We must compare\l"
++	.string "readings.$"
++
++MossdeepCity_SpaceCenter_1F_Text_SecondSignalReminder:
++	.string "The second signal still pulses, out\n"
++	.string "at sea.\p"
++	.string "The ferry at LILYCOVE HARBOR\n"
++	.string "honors your AURORA TICKET.\p"
++	.string "An island that appears on no chart…\n"
++	.string "and a voice from the void.$"
++
+ MossdeepCity_SpaceCenter_1F_Text_DidPokemonComeFromSpace:
+ 	.string "Some people claim that POKéMON came\n"
+ 	.string "from space. Could it be true?$"
+diff --git a/data/specials.inc b/data/specials.inc
+index e82357e86134760a3b88f3827f921a3cc005c061..a37732f7117b1b48e758896ffaf657b2633fa2b6 100644
+--- a/data/specials.inc
++++ b/data/specials.inc
+@@ -544,3 +544,4 @@ gSpecials:
+ 	def_special LocalSession_CanEnter
+ 	def_special LocalSession_Leave
+ 	def_special CheckJirachiCosmicAlignment
++	def_special CheckSpeciesInParty
+diff --git a/include/constants/flags.h b/include/constants/flags.h
+index ff28439b5ecf01515cf58d729672559b97321a91..040fb681d1ad473a197dd13a95a9ccb07be6d114 100644
+--- a/include/constants/flags.h
++++ b/include/constants/flags.h
+@@ -752,6 +752,9 @@
+ #define FLAG_DEFEATED_JIRACHI               FLAG_UNUSED_0x26A
+ #define FLAG_JIRACHI_DOOR_OPEN              FLAG_UNUSED_0x26B
+ 
++// The tracks that follow it.
++#define FLAG_AURORA_TICKET_GIVEN            FLAG_UNUSED_0x265 // Deoxys
++
+ // Event Flags
+ #define FLAG_HIDE_ROUTE_101_BIRCH_STARTERS_BAG                      0x2BC
+ #define FLAG_HIDE_APPRENTICE                                        0x2BD
+diff --git a/src/field_specials.c b/src/field_specials.c
+index a2bbe5391b839e78e25b8911e2d409a1bddc1194..897808bb826236b088ca2a1e6a57fc4db4c84397 100644
+--- a/src/field_specials.c
++++ b/src/field_specials.c
+@@ -4295,3 +4295,16 @@ u8 CheckJirachiCosmicAlignment(void)
+     }
+     return FALSE;
+ }
++
++// TRUE when the given species (gSpecialVar_0x8004) is in the party.
++u8 CheckSpeciesInParty(void)
++{
++    u32 i;
++    u16 species = gSpecialVar_0x8004;
++    for (i = 0; i < PARTY_SIZE; i++)
++    {
++        if (GetMonData(&gPlayerParty[i], MON_DATA_SPECIES) == species)
++            return TRUE;
++    }
++    return FALSE;
++}

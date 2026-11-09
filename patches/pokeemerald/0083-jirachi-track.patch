@@ -19,8 +19,12 @@ TcmeBS?qQx_!l<>;G@KCt7bXKt
 delta 12
 TcmeBS?qQx_!f3eBG@KCt7fAzC
 
+new file mode 100644
+index 0000000000000000000000000000000000000000..19d90667980ced4e6b00a744509ce6de9504511a
 diff --git a/data/layouts/MeteorFalls_JirachiChamber/border.bin b/data/layouts/MeteorFalls_JirachiChamber/border.bin
 new file mode 100644
+--- /dev/null
++++ b/data/layouts/MeteorFalls_JirachiChamber/border.bin
 index 0000000000000000000000000000000000000000..19d90667980ced4e6b00a744509ce6de9504511a
 GIT binary patch
 literal 8
@@ -29,8 +33,12 @@ LcmZQ%Vgy3~06YK<
 literal 0
 HcmV?d00001
 
+new file mode 100644
+index 0000000000000000000000000000000000000000..4cbfff0d26d551f27456426fa4e0dd8beebd3bb7
 diff --git a/data/layouts/MeteorFalls_JirachiChamber/map.bin b/data/layouts/MeteorFalls_JirachiChamber/map.bin
 new file mode 100644
+--- /dev/null
++++ b/data/layouts/MeteorFalls_JirachiChamber/map.bin
 index 0000000000000000000000000000000000000000..4cbfff0d26d551f27456426fa4e0dd8beebd3bb7
 GIT binary patch
 literal 288

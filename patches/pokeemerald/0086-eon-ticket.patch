@@ -1,0 +1,102 @@
+diff --git a/data/scripts/players_house.inc b/data/scripts/players_house.inc
+index f2fd0e72c58e1f203a702b6a4a743c1fd63814f3..c62be160dbec86b1309d7b0244041b0839cf509b 100644
+--- a/data/scripts/players_house.inc
++++ b/data/scripts/players_house.inc
+@@ -303,6 +303,7 @@ PlayersHouse_1F_EventScript_Mom::
+ 	faceplayer
+ 	goto_if_eq VAR_LITTLEROOT_HOUSES_STATE_MAY, 4, PlayersHouse_1F_EventScript_DontPushYourselfTooHard
+ 	goto_if_eq VAR_LITTLEROOT_HOUSES_STATE_BRENDAN, 4, PlayersHouse_1F_EventScript_DontPushYourselfTooHard
++	goto_if_set FLAG_SYS_GAME_CLEAR, PlayersHouse_1F_EventScript_MomPostgameCheck
+ 	goto_if_set FLAG_HAS_MATCH_CALL, PlayersHouse_1F_EventScript_TryRegisterMom
+ 	goto_if_set FLAG_RESCUED_BIRCH, PlayersHouse_1F_EventScript_MomHealsParty
+ 	goto_if_eq VAR_TEMP_1, 1, PlayersHouse_1F_EventScript_SeeYouHoney
+@@ -311,6 +312,24 @@ PlayersHouse_1F_EventScript_Mom::
+ 	release
+ 	end
+ 
++PlayersHouse_1F_EventScript_MomPostgameCheck::
++	goto_if_set FLAG_EON_TICKET_GIVEN, PlayersHouse_1F_EventScript_MomEonReminder
++	specialvar VAR_RESULT, CheckRoamingEonInParty
++	goto_if_eq VAR_RESULT, FALSE, PlayersHouse_1F_EventScript_TryRegisterMom
++	msgbox PlayersHouse_1F_Text_MomLetterArrived, MSGBOX_DEFAULT
++	msgbox PlayersHouse_1F_Text_MomLetterContents, MSGBOX_DEFAULT
++	giveitem ITEM_EON_TICKET
++	goto_if_eq VAR_RESULT, FALSE, Common_EventScript_ShowBagIsFull
++	setflag FLAG_ENABLE_SHIP_SOUTHERN_ISLAND
++	setflag FLAG_EON_TICKET_GIVEN
++	release
++	end
++
++PlayersHouse_1F_EventScript_MomEonReminder::
++	msgbox PlayersHouse_1F_Text_MomEonReminder, MSGBOX_DEFAULT
++	goto PlayersHouse_1F_EventScript_TryRegisterMom
++	end
++
+ PlayersHouse_1F_EventScript_DontPushYourselfTooHard::
+ 	msgbox PlayersHouse_1F_Text_DontPushYourselfTooHard, MSGBOX_DEFAULT
+ 	release
+@@ -673,3 +692,27 @@ PlayersHouse_1F_Movement_PlayerApproachTVForLatiFemale:
+ EventScript_RunningShoesManual::
+ 	msgbox PlayersHouse_1F_Text_RunningShoesManual, MSGBOX_SIGN
+ 	end
++
++PlayersHouse_1F_Text_MomLetterArrived:
++	.string "Oh, {PLAYER}{KUN}! A letter arrived for\n"
++	.string "you while you were out.\p"
++	.string "All the way from the ferry company,\n"
++	.string "if you can believe it.$"
++
++PlayersHouse_1F_Text_MomLetterContents:
++	.string "Let's see… “We have taken note of\n"
++	.string "your bond with the EON POKéMON.\l"
++	.string "Riders of the wind and sea are rare.”\p"
++	.string "“A sighting of one of its kin has been\n"
++	.string "reported on a remote island south\l"
++	.string "of HOENN.”\p"
++	.string "Oh, and a ticket fell out when I\n"
++	.string "opened it. Here you are.\p"
++	.string "The EON TICKET. Do be careful out\n"
++	.string "there, dear.$"
++
++PlayersHouse_1F_Text_MomEonReminder:
++	.string "The EON TICKET still rides in your\n"
++	.string "pack, doesn't it?\p"
++	.string "The ferry at LILYCOVE HARBOR will\n"
++	.string "honor it, whenever you wish.$"
+diff --git a/data/specials.inc b/data/specials.inc
+index a37732f7117b1b48e758896ffaf657b2633fa2b6..ad5dc94c9a56841be0a47011e9261113ae935eb1 100644
+--- a/data/specials.inc
++++ b/data/specials.inc
+@@ -545,3 +545,4 @@ gSpecials:
+ 	def_special LocalSession_Leave
+ 	def_special CheckJirachiCosmicAlignment
+ 	def_special CheckSpeciesInParty
++	def_special CheckRoamingEonInParty
+diff --git a/include/constants/flags.h b/include/constants/flags.h
+index bd72e44f88347b810766b47946d0403693a46d49..5e3f7e4bd04c400abf0beef6f0b705c36f81ee90 100644
+--- a/include/constants/flags.h
++++ b/include/constants/flags.h
+@@ -754,6 +754,7 @@
+ 
+ // The tracks that follow it.
+ #define FLAG_AURORA_TICKET_GIVEN            FLAG_UNUSED_0x265 // Deoxys
++#define FLAG_EON_TICKET_GIVEN               FLAG_UNUSED_0x266 // Latias/Latios
+ #define FLAG_OLD_SEA_MAP_RECOGNIZED         FLAG_UNUSED_0x268 // Mew
+ #define FLAG_ITEM_EXPEDITION_HOLD_OLD_SEA_MAP FLAG_UNUSED_0x26F
+ 
+diff --git a/src/field_specials.c b/src/field_specials.c
+index 897808bb826236b088ca2a1e6a57fc4db4c84397..74ee73c00ac1e7852f191a72938c3df6fd29b601 100644
+--- a/src/field_specials.c
++++ b/src/field_specials.c
+@@ -4308,3 +4308,11 @@ u8 CheckSpeciesInParty(void)
+     }
+     return FALSE;
+ }
++
++// TRUE when the roaming EON POKéMON (the counterpart to the one the player
++// chose on television) is in the party: the Eon Ticket scene.
++u8 CheckRoamingEonInParty(void)
++{
++    gSpecialVar_0x8004 = VarGet(VAR_ROAMER_POKEMON) ? SPECIES_LATIOS : SPECIES_LATIAS;
++    return CheckSpeciesInParty();
++}
