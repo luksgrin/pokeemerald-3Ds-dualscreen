@@ -8862,11 +8862,15 @@ def ship_hidden_corridors():
     than 1F's: its face rows 7-8). Its script changes the doors' bottoms at
     (3,8) and (6,8) and the indents on its back edge at (3,3) and (9,3):
     those cells are in no piece, a lintel over each door, the columns under
-    the indents a row shorter. The flooded corner stays drawn."""
+    the indents a row shorter. The flooded corner stays drawn. In block_2's
+    face, the locked door the events patch adds at (2,5) and (2,6) to the
+    Expedition Hold: its wood is the floor's own, so it is claimed."""
     side = (16, 0, 32, 32)
     face = (32, 117, 48, 142)
+    door_claim = [(32, 80, 48, 112)]
     return [piece("block_%d" % (x0 // 16), [(x0, y0, x1, y1)], 26, solid=True, side=face,
-                  **({"foot": 143} if y1 < 143 else {}))
+                  **({"foot": 143} if y1 < 143 else {}),
+                  **({"claim": door_claim} if x0 == 32 else {}))
             for (x0, y0, x1, y1) in ((32, 57, 48, 143), (48, 64, 64, 128), (64, 57, 96, 143),
                                      (96, 57, 112, 128), (112, 57, 144, 143), (144, 64, 160, 143),
                                      (160, 57, 176, 143))] + [
